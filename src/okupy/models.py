@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+from okupy.video.omni import OmniJobSpec, VideoMode
 
 
 OutputKind = Literal["slideshow", "video"]
@@ -46,3 +48,30 @@ class GenerateResult(BaseModel):
     video_path: str | None = None
     model: ModelProfile | None = None
     notes: list[str] = Field(default_factory=list)
+
+
+class VideoRequest(BaseModel):
+    """Backend video job: generate, drop-in edit, inpaint, or keyframe interpolation."""
+
+    mode: VideoMode = "generate"
+    prompt: str = Field(min_length=3)
+    video_path: str | None = None
+    first_frame_path: str | None = None
+    last_frame_path: str | None = None
+    mask_path: str | None = None
+    aspect_ratio: str = "9:16"
+    resolution: str = "720p"
+    previous_interaction_id: str | None = None
+
+
+class VideoJobResult(BaseModel):
+    job_id: str
+    agent: AgentName = "video"
+    mode: VideoMode
+    task: str
+    prompt: str
+    video_path: str | None = None
+    spec: OmniJobSpec | None = None
+    interaction: dict[str, Any] = Field(default_factory=dict)
+    interaction_id: str | None = None
+    note: str

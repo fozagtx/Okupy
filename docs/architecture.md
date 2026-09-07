@@ -2,10 +2,10 @@
 
 ## What we are building
 
-Okupy is a tutorial engine. You give it a tutorial. It produces:
+Okupy is a **backend** tutorial engine (JSON API, not a web app). You POST a tutorial. It produces:
 
 1. A **TikTok slideshow** (9:16 image carousel, not a PowerPoint deck)
-2. Optional **AI video** through **Google Gemini Omni**
+2. Optional **AI video** through **Google Gemini Omni** — generate, **drop-in clip edit**, **inpaint**, and **keyframe** interpolation
 3. **Screenshots** of the finished slides from a **Daytona** sandbox
 4. Delivery over **iMessage** (Photon Spectrum) and **Gmail** (Composio)
 
@@ -15,12 +15,12 @@ The Claude Agent SDK runs a **3-agent orchestration**: one supervisor and two sp
 flowchart TB
   subgraph channels [Channels]
     IM[iMessage via Photon Spectrum]
-    HTTP[HTTP API plus generate UI]
+    HTTP[HTTP JSON API]
     GM[Gmail via Composio]
   end
 
   subgraph render [Render]
-    WEB[okupy-api web service]
+    WEB[okupy-api backend]
     WRK[okupy-imessage worker]
     SIDECAR[Node spectrum-ts sidecar]
   end
@@ -35,7 +35,7 @@ flowchart TB
     MB[Custom model builder]
     SLIDE[Pillow 1080x1920 renderer]
     DAY[Daytona sandbox screenshots]
-    OMNI[Gemini Omni Interactions API]
+    OMNI[Gemini Omni generate edit inpaint keyframes]
   end
 
   IM --> SIDECAR --> WRK --> WEB
@@ -91,7 +91,7 @@ Each specialist owns one job:
 | --- | --- |
 | `supervisor` | Routing, model profile, Composio, Photon replies |
 | `slideshow` | Tutorial outline, TikTok carousel, Daytona screenshots |
-| `video` | Gemini Omni prompts and clip generation |
+| `video` | Gemini Omni generate, drop-in edit, inpaint, keyframes |
 
 ### 2. Do not default to Opus
 
@@ -117,7 +117,7 @@ Composio is the auth layer for Gmail and later apps. Users hit `/v1/auth/gmail`,
 
 `render.yaml` defines:
 
-- `okupy-api` — FastAPI + generate UI
+- `okupy-api` — FastAPI **backend** (no generate UI)
 - `okupy-imessage` — Photon sidecar + inbound worker
 
 Secrets stay `sync: false`.
@@ -139,3 +139,16 @@ Resolved profiles become `ClaudeAgentOptions(model=..., env={ANTHROPIC_API_KEY, 
 ## Direct vs agent mode
 
 `OKUPY_AGENT_MODE=direct` (default for tests) runs the same three-agent plan without calling Anthropic. `OKUPY_AGENT_MODE=agent` uses the Claude Agent SDK when a key is present. The tools underneath are identical, so slideshows still generate in CI.
+
+## Video editing
+
+The video specialist is not generate-only. Callers drop a clip (multipart `POST /v1/videos/drop` or JSON paths on `POST /v1/videos`) and pick a mode:
+
+| Mode | Omni task | Inputs |
+| --- | --- | --- |
+| `generate` | `text_to_video` | prompt |
+| `edit` | `edit` | dropped source clip + prompt |
+| `inpaint` | `edit` | dropped clip + inpaint prompt + optional mask |
+| `keyframes` | `image_to_video` | `first_frame` + `last_frame` images |
+
+Keyframe jobs tag Omni sources as `<FIRST_FRAME>` / `<LAST_FRAME>`. Inpaint/edit tag the dropped file as `<VIDEO_0>`. Without `GEMINI_API_KEY` the backend still returns the planned Interactions payload so agents and tests can inspect the job.

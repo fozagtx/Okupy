@@ -10,3 +10,6 @@ def test_architecture_doc_pushes_back():
     assert "Composio" in text
     assert "render.yaml" in text
     assert "Opus" in text
+    assert "backend" in text.lower()
+    assert "inpaint" in text.lower()
+    assert "keyframe" in text.lower()

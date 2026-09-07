@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     okupy_agent_mode: str = "direct"
 
     gemini_api_key: str = ""
-    gemini_omni_model: str = "gemini-omni-flash-preview"
+    gemini_omni_model: str = "gemini-omni-1.1-flash"
 
     daytona_api_key: str = ""
     daytona_api_url: str = ""

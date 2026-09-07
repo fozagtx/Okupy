@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "okupy"
 version = "0.1.0"
-description = "Tutorial engine that generates TikTok slideshows and Gemini Omni videos via a 3-agent Claude orchestration."
+description = "Backend for TikTok slideshows and Gemini Omni video generate/edit via a 3-agent Claude orchestration."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -32,7 +32,7 @@ okupy = "okupy.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-okupy = ["static/*", "photon_sidecar/*"]
+okupy = ["photon_sidecar/*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

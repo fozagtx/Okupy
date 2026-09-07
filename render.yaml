@@ -1,5 +1,5 @@
 # Render Blueprint for Okupy.
-# Web service handles HTTP + the generate UI.
+# API service is backend-only (no generate UI).
 # Worker keeps the Photon iMessage sidecar alive (persistent gRPC, not a webhook).
 services:
   - type: web
@@ -16,7 +16,7 @@ services:
       - key: OKUPY_MODEL
         value: claude-sonnet-4-5
       - key: GEMINI_OMNI_MODEL
-        value: gemini-omni-flash-preview
+        value: gemini-omni-1.1-flash
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: ANTHROPIC_BASE_URL

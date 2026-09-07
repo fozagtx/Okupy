@@ -31,9 +31,38 @@ async def run_claude_supervisor(prompt: str, resolved: ResolvedModel, cwd: Path)
         result = job_tools().generate_video(args["job_id"], args["tutorial"], args.get("title") or "Tutorial")
         return {"content": [{"type": "text", "text": result}]}
 
+    @tool(
+        "run_omni_video",
+        "Edit or generate a Gemini Omni video: edit, inpaint, keyframes, or generate.",
+        {
+            "job_id": str,
+            "mode": str,
+            "prompt": str,
+            "video_path": str,
+            "first_frame_path": str,
+            "last_frame_path": str,
+            "mask_path": str,
+        },
+    )
+    async def run_omni_video(args: dict[str, Any]) -> dict[str, Any]:
+        from okupy.models import VideoRequest
+
+        job = job_tools().run_video_job(
+            VideoRequest(
+                mode=args.get("mode") or "edit",
+                prompt=args["prompt"],
+                video_path=args.get("video_path") or None,
+                first_frame_path=args.get("first_frame_path") or None,
+                last_frame_path=args.get("last_frame_path") or None,
+                mask_path=args.get("mask_path") or None,
+            ),
+            job_id=args["job_id"],
+        )
+        return {"content": [{"type": "text", "text": job.model_dump_json()}]}
+
     server = create_sdk_mcp_server(
         name="okupy",
-        tools=[generate_slideshow, capture_screenshots, generate_omni_video],
+        tools=[generate_slideshow, capture_screenshots, generate_omni_video, run_omni_video],
     )
     options = ClaudeAgentOptions(
         system_prompt=SUPERVISOR_PROMPT,
@@ -45,6 +74,7 @@ async def run_claude_supervisor(prompt: str, resolved: ResolvedModel, cwd: Path)
             "mcp__okupy__generate_slideshow",
             "mcp__okupy__capture_screenshots",
             "mcp__okupy__generate_omni_video",
+            "mcp__okupy__run_omni_video",
         ],
         permission_mode="bypassPermissions",
         cwd=str(cwd),

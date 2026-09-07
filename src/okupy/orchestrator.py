@@ -9,7 +9,7 @@ from okupy.config import Settings
 from okupy.integrations.composio_gmail import ComposioGmail
 from okupy.integrations.photon import PhotonClient
 from okupy.model_builder import ModelBuilder, ResolvedModel
-from okupy.models import AgentName, GenerateRequest, GenerateResult
+from okupy.models import AgentName, GenerateRequest, GenerateResult, VideoJobResult, VideoRequest
 from okupy.sandbox.daytona import DaytonaSandbox
 from okupy.slides import outline_tutorial
 from okupy.slides.render import render_cards
@@ -50,6 +50,42 @@ class JobTools:
                 "note": result.note,
             }
         )
+
+    def run_video_job(self, request: VideoRequest, job_id: str | None = None) -> VideoJobResult:
+        from okupy.video.omni import build_omni_job
+
+        job_id = job_id or uuid.uuid4().hex[:12]
+        spec = build_omni_job(
+            mode=request.mode,
+            prompt=request.prompt,
+            video_path=request.video_path,
+            first_frame_path=request.first_frame_path,
+            last_frame_path=request.last_frame_path,
+            mask_path=request.mask_path,
+            aspect_ratio=request.aspect_ratio,
+            resolution=request.resolution,
+            previous_interaction_id=request.previous_interaction_id,
+        )
+        filename = {
+            "generate": "omni.mp4",
+            "edit": "edited.mp4",
+            "inpaint": "inpainted.mp4",
+            "keyframes": "keyframes.mp4",
+        }[request.mode]
+        result = self.omni.run(spec, self.job_dir(job_id) / "video" / filename)
+        payload = VideoJobResult(
+            job_id=job_id,
+            mode=spec.mode,
+            task=spec.task,
+            prompt=spec.prompt,
+            video_path=str(result.path) if result.path else None,
+            spec=spec,
+            interaction=spec.interaction_payload(self.omni.model),
+            interaction_id=result.interaction_id,
+            note=result.note,
+        )
+        (self.job_dir(job_id) / "result.json").write_text(payload.model_dump_json(indent=2), encoding="utf-8")
+        return payload
 
 
 _TOOLS: JobTools | None = None
@@ -136,6 +172,9 @@ class Supervisor:
         )
         self._persist(result)
         return result
+
+    def run_video(self, request: VideoRequest) -> VideoJobResult:
+        return self.tools.run_video_job(request)
 
     def _persist(self, result: GenerateResult) -> None:
         path = self.tools.job_dir(result.job_id) / "result.json"
