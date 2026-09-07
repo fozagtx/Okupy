@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from PIL import Image
 
 from okupy.slides import TIKTOK_HEIGHT, TIKTOK_WIDTH, outline_tutorial
@@ -20,6 +22,21 @@ def test_outline_has_hook_steps_and_cta():
     assert cards[-1].kind == "cta"
     assert any(card.kind == "step" for card in cards)
     assert "Lock exposure" in cards[1].body
+
+
+def test_inline_numbered_steps_are_not_split_on_periods():
+    cards = outline_tutorial(
+        "1. Heat a nonstick pan. 2. Beat two eggs with a pinch of salt. 3. Pour and tilt. 4. Fold and plate.",
+        title="30-second omelette",
+    )
+    bodies = [card.body for card in cards if card.kind == "step"]
+    assert bodies == [
+        "Heat a nonstick pan.",
+        "Beat two eggs with a pinch of salt.",
+        "Pour and tilt.",
+        "Fold and plate.",
+    ]
+    assert not any(re.fullmatch(r"\d+[).:-]?", card.body) for card in cards)
 
 
 def test_render_tiktok_dimensions(tmp_path):
