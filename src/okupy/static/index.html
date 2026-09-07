@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Okupy</title>
+    <link rel="stylesheet" href="/static/app.css" />
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">3 agents · TikTok slideshows · Gemini Omni</p>
+      <h1>Turn any tutorial into slides.</h1>
+      <p class="lede">
+        Supervisor routes work to a slideshow agent and a video agent.
+        Default model is configurable — not hardcoded to Opus.
+      </p>
+
+      <form id="generate-form">
+        <label>
+          Title
+          <input id="title" name="title" placeholder="How to fold a fitted sheet" />
+        </label>
+        <label>
+          Tutorial
+          <textarea id="tutorial" name="tutorial" required rows="8" placeholder="1. Flip inside out&#10;2. Tuck the corners&#10;3. Fold in thirds"></textarea>
+        </label>
+        <fieldset>
+          <legend>Outputs</legend>
+          <label class="check"><input type="checkbox" name="slideshow" checked /> TikTok slideshow</label>
+          <label class="check"><input type="checkbox" name="video" /> Gemini Omni video</label>
+        </fieldset>
+        <label>
+          Model profile
+          <select id="model" name="model"></select>
+        </label>
+        <div class="actions">
+          <button type="submit">Generate</button>
+          <button type="button" id="gmail">Connect Gmail</button>
+        </div>
+      </form>
+
+      <p id="status" class="status" hidden></p>
+      <section id="result" hidden>
+        <h2 id="result-title"></h2>
+        <p id="result-meta"></p>
+        <div id="gallery" class="gallery"></div>
+        <ul id="notes"></ul>
+      </section>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

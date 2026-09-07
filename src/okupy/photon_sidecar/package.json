@@ -1,0 +1,8 @@
+{
+  "name": "okupy-photon-sidecar",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "spectrum-ts": "^0.4.0"
+  }
+}
