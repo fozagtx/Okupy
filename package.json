@@ -6,6 +6,9 @@
   "engines": {
     "node": ">=22 <23"
   },
+  "overrides": {
+    "@photon-ai/imessage-kit": "3.0.0-rc.2"
+  },
   "scripts": {
     "dev": "mastra dev",
     "build": "mastra build",
