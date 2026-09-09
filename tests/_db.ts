@@ -1,4 +1,3 @@
-import assert from "node:assert/strict";
 import test from "node:test";
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 
@@ -22,12 +21,12 @@ export function testDb(): NeonQueryFunction<false, false> {
 }
 
 export async function resetSchema(sql: NeonQueryFunction<false, false>): Promise<void> {
-  await sql`
-    DROP TABLE IF EXISTS reminder_history CASCADE;
-    DROP TABLE IF EXISTS reminders CASCADE;
-    DROP TABLE IF EXISTS onboarding_drafts CASCADE;
-    DROP TABLE IF EXISTS profiles CASCADE;
-    CREATE TABLE profiles (
+  const statements = [
+    `DROP TABLE IF EXISTS reminder_history CASCADE`,
+    `DROP TABLE IF EXISTS reminders CASCADE`,
+    `DROP TABLE IF EXISTS onboarding_drafts CASCADE`,
+    `DROP TABLE IF EXISTS profiles CASCADE`,
+    `CREATE TABLE profiles (
       user_id TEXT PRIMARY KEY,
       name TEXT NOT NULL DEFAULT '',
       project TEXT NOT NULL,
@@ -37,15 +36,15 @@ export async function resetSchema(sql: NeonQueryFunction<false, false>): Promise
       location TEXT NOT NULL,
       radius_miles INTEGER NOT NULL DEFAULT 25,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    );
-    CREATE TABLE onboarding_drafts (
+    )`,
+    `CREATE TABLE onboarding_drafts (
       user_id TEXT PRIMARY KEY,
       step TEXT NOT NULL,
       project TEXT,
       location TEXT,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    );
-    CREATE TABLE reminders (
+    )`,
+    `CREATE TABLE reminders (
       id UUID PRIMARY KEY,
       user_id TEXT NOT NULL,
       fire_at TIMESTAMPTZ NOT NULL,
@@ -55,17 +54,20 @@ export async function resetSchema(sql: NeonQueryFunction<false, false>): Promise
       status TEXT NOT NULL DEFAULT 'pending',
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       fired_at TIMESTAMPTZ
-    );
-    CREATE INDEX reminders_user_status_fire_idx ON reminders (user_id, status, fire_at);
-    CREATE TABLE reminder_history (
+    )`,
+    `CREATE INDEX reminders_user_status_fire_idx ON reminders (user_id, status, fire_at)`,
+    `CREATE TABLE reminder_history (
       id UUID PRIMARY KEY,
       reminder_id UUID NOT NULL,
       user_id TEXT NOT NULL,
       delivered_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       reply_text TEXT NOT NULL,
       channel TEXT NOT NULL DEFAULT 'imessage'
-    );
-  `;
+    )`,
+  ];
+  for (const statement of statements) {
+    await sql.query(statement, []);
+  }
 }
 
 export function withDb(testName: string, fn: (sql: NeonQueryFunction<false, false>) => Promise<void>): void {
