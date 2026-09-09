@@ -1,0 +1,39 @@
+import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import test from "node:test";
+
+const root = fileURLToPath(new URL("..", import.meta.url));
+const read = path => readFileSync(join(root, path), "utf8");
+
+test("the application is a TypeScript Mastra service", () => {
+  const pkg = JSON.parse(read("package.json"));
+  const render = read("render.yaml");
+  const source = read("src/mastra/index.ts");
+  assert.ok(pkg.dependencies["@mastra/core"]);
+  assert.match(source, /new Mastra/);
+  assert.match(render, /runtime: node/);
+  assert.doesNotMatch(render, /python|uvicorn|docker/i);
+  assert.equal(existsSync(join(root, "src/okupy")), false, "legacy Python backend must stay removed");
+  assert.equal(existsSync(join(root, "pyproject.toml")), false);
+  assert.equal(existsSync(join(root, "requirements.txt")), false);
+});
+
+test("URLs stay in TypeScript config and out of environment configuration", () => {
+  const env = read(".env.example");
+  const render = read("render.yaml");
+  const config = read("src/mastra/config.ts");
+  assert.doesNotMatch(env, /URL=/);
+  assert.doesNotMatch(render, /URL\b/);
+  assert.match(config, /https:\/\/api\.exa\.ai\/search/);
+  assert.match(config, /https:\/\/backend\.composio\.dev/);
+  assert.doesNotMatch(`${env}\n${render}`, /EVE_API_KEY|OKUPY_API_URL/);
+});
+
+test("deployment uses a reproducible Node build", () => {
+  const render = read("render.yaml");
+  assert.ok(existsSync(join(root, "package-lock.json")));
+  assert.match(render, /buildCommand: npm ci && npm run build/);
+  assert.match(render, /startCommand: npm start/);
+});

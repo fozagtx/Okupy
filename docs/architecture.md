@@ -1,31 +1,24 @@
-# Okupy architecture
+# Architecture
+
+Okupy is one TypeScript process built and served by Mastra.
 
 ```mermaid
 flowchart LR
-  U[Builder] -->|iMessage| P[Photon Spectrum sidecar]
-  U -->|one-time setup| D[Simple dashboard]
-  P --> API[FastAPI / Eve agent boundary]
-  D --> API
-  API <--> M[(SQLite profile memory)]
-  API --> E[Exa Search API]
-  API --> C[Composio connection link]
-  E --> API --> P
+  U[Builder] --> D[Dashboard]
+  U --> P[Photon Spectrum iMessage]
+  D --> M[Mastra routes]
+  P --> A[Builder Event Agent]
+  M --> A
+  A --> X[Typed Exa event tool]
+  A <--> R[(LibSQL conversation memory)]
+  M <--> S[(Profile and onboarding store)]
+  M --> C[Composio Gmail Connect Link]
 ```
 
-The product is deliberately one agent, not a slideshow pipeline. `EveFoodFinderAgent` has a narrow job: use remembered context to find credible reasons for a builder to meet people in person. HTTP and iMessage call the same agent method, so behavior cannot drift by channel.
+`BuilderEventAgent` is a Mastra `Agent`. Its Exa integration is a typed Mastra tool that performs time-bounded searches and classifies explicit food, networking, and builder-credit signals. Results retain source URLs, and replies remind users to verify event and RSVP details.
 
-## Ranking and safety
+The dashboard and Photon Spectrum call the same response boundary. New iMessage senders complete a short persisted onboarding conversation before discovery, so restarts do not lose their progress. Mastra conversation history uses a LibSQL store on the Render disk and is partitioned by stable channel identity.
 
-Exa performs live discovery. Okupy requests dated local founder, developer, hackathon, and community pages, then tags explicit text signals for free food, networking, and credits. Results always retain their source URL. The reply asks users to verify RSVP and perks because event details change. Production ranking should additionally parse event dates and deduplicate venues before proactive alerts.
+Photon runs inside the same Node process. There is no sidecar server, Python worker, FastAPI service, Uvicorn process, slideshow/video pipeline, Daytona integration, or internal API URL.
 
-## Memory
-
-Profiles store project, stage, goals, interests, location, radius, and update time in SQLite on Render's persistent disk. Do not put OAuth credentials or message bodies in this profile. A production rollout should authenticate dashboard access, normalize phone IDs, encrypt the disk, support deletion/export, and apply retention limits.
-
-## Integrations
-
-- **Eve agent SDK boundary:** the agent and tools are isolated in `agent.py`; `EVE_API_KEY` is reserved for the hosted runtime. The deterministic local path makes development and tests safe without sending user data to a model.
-- **Exa:** server-side search only; the browser never receives its key.
-- **Photon Spectrum:** a Node sidecar owns the persistent iMessage SDK connection and forwards inbound messages to the API.
-- **Composio:** creates a scoped Gmail Connect Link; Okupy never collects a Google password. Gmail is connection-only in this release.
-- **Render:** one web service with persistent memory and one private Photon service. Secrets are marked `sync: false`.
+All public integration locations are source-controlled in `src/mastra/config.ts`. Only provider credentials and secrets are read from the environment. Production deployments should additionally authenticate dashboard profile access, normalize channel identities, encrypt persistent data, and provide profile deletion/export and retention controls.

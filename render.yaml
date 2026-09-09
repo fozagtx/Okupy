@@ -1,43 +1,23 @@
 services:
   - type: web
     name: okupy-api
-    runtime: python
+    runtime: node
     plan: starter
-    buildCommand: pip install -r requirements.txt && pip install -e .
-    startCommand: uvicorn okupy.api:app --host 0.0.0.0 --port $PORT
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
     healthCheckPath: /health
     disk:
       name: okupy-memory
       mountPath: /var/data
       sizeGB: 1
     envVars:
-      - key: PYTHON_VERSION
-        value: "3.12.7"
-      - key: OKUPY_DATA_DIR
-        value: /var/data
-      - key: EXA_API_KEY
+      - key: OPENAI_API_KEY
         sync: false
-      - key: EVE_API_KEY
+      - key: EXA_API_KEY
         sync: false
       - key: COMPOSIO_API_KEY
         sync: false
-      - key: COMPOSIO_USER_ID
-        value: okupy-owner
-  - type: worker
-    name: okupy-photon
-    runtime: docker
-    plan: starter
-    dockerfilePath: ./Dockerfile
-    dockerCommand: python -m okupy.worker
-    envVars:
-      - key: OKUPY_API_URL
-        fromService:
-          type: web
-          name: okupy-api
-          envVarKey: RENDER_EXTERNAL_URL
       - key: PHOTON_PROJECT_ID
         sync: false
       - key: PHOTON_PROJECT_SECRET
-        sync: false
-      - key: PHOTON_SIDECAR_TOKEN
         sync: false
