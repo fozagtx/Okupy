@@ -18,6 +18,8 @@ htmlcov/
 artifacts/
 jobs/
 node_modules/
+.mastra/
+data/
 *.mp4
 *.png
 !docs/**/*.png
