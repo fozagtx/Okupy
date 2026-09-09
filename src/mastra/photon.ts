@@ -4,17 +4,17 @@ import { Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import { setSpectrum } from "./spectrum-state.js";
 
-export type PhotonStatus = "disabled" | "starting" | "ready" | "error";
+export type SpectrumStatus = "disabled" | "starting" | "ready" | "error";
 
-let status: PhotonStatus = "disabled";
+let status: SpectrumStatus = "disabled";
 
-export function photonStatus(): PhotonStatus {
+export function photonStatus(): SpectrumStatus {
   return status;
 }
 
 export async function startPhoton(): Promise<void> {
-  const projectId = secret("PHOTON_PROJECT_ID");
-  const projectSecret = secret("PHOTON_PROJECT_SECRET");
+  const projectId = secret("SPECTRUM_PROJECT_ID") || secret("PHOTON_PROJECT_ID");
+  const projectSecret = secret("SPECTRUM_PROJECT_SECRET") || secret("PHOTON_PROJECT_SECRET");
   if (!projectId || !projectSecret) {
     status = "disabled";
     return;
@@ -38,12 +38,12 @@ export async function startPhoton(): Promise<void> {
           const result = await respond(userId, text);
           await space.responding(() => message.reply(result.reply));
         } catch (error) {
-          console.error("Photon message handling failed", error);
+          console.error("Spectrum message handling failed", error);
         }
       }
     })().catch(error => {
       status = "error";
-      console.error("Photon listener failed", error);
+      console.error("Spectrum listener failed", error);
     });
   } catch (error) {
     status = "error";
