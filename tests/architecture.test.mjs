@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 test("the application is a TypeScript Mastra service", () => {
@@ -10,6 +10,7 @@ test("the application is a TypeScript Mastra service", () => {
   assert.match(source, /new Mastra/);
   assert.match(render, /runtime: node/);
   assert.doesNotMatch(render, /python|uvicorn/i);
+  assert.equal(existsSync("src/okupy"), false, "legacy Python backend must stay removed");
 });
 
 test("URLs stay out of environment templates and Render", () => {
