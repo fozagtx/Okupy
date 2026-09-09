@@ -1,77 +1,54 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, Field
-
-from okupy.video.omni import OmniJobSpec, VideoMode
-
-
-OutputKind = Literal["slideshow", "video"]
-AgentName = Literal["supervisor", "slideshow", "video"]
+from pydantic import BaseModel, Field, HttpUrl
 
 
-class ModelProfile(BaseModel):
-    """A swappable Anthropic (or Anthropic-compatible) model + key."""
+class BuilderProfile(BaseModel):
+    user_id: str = Field(min_length=1)
+    name: str = ""
+    project: str = Field(min_length=2)
+    project_stage: str = "building"
+    goals: list[str] = Field(default_factory=list)
+    interests: list[str] = Field(default_factory=list)
+    location: str = Field(min_length=2)
+    radius_miles: int = Field(default=25, ge=1, le=250)
+    updated_at: datetime | None = None
 
-    name: str
-    model_id: str
-    api_key: str | None = None
-    base_url: str | None = None
-    fallback_model: str | None = None
 
-
-class SlideCard(BaseModel):
-    index: int
-    kind: Literal["hook", "step", "cta"] = "step"
+class Event(BaseModel):
     title: str
-    body: str
+    url: HttpUrl
+    summary: str = ""
+    date: str | None = None
+    location: str | None = None
+    free_food: bool = False
+    networking: bool = False
+    builder_credits: bool = False
+    why: str = ""
 
 
-class GenerateRequest(BaseModel):
-    tutorial: str = Field(min_length=8)
-    title: str | None = None
-    outputs: list[OutputKind] = Field(default_factory=lambda: ["slideshow"])
-    model: str | None = None
-    user_id: str | None = None
-    notify_imessage: str | None = None
-    send_gmail: bool = False
+class DiscoveryRequest(BaseModel):
+    user_id: str = Field(min_length=1)
+    message: str = "Find me something worthwhile this week"
+    refresh: bool = False
 
 
-class GenerateResult(BaseModel):
-    job_id: str
-    title: str
-    supervisor: str = "supervisor"
-    agents_used: list[AgentName]
-    slides: list[str] = Field(default_factory=list)
-    screenshots: list[str] = Field(default_factory=list)
-    video_path: str | None = None
-    model: ModelProfile | None = None
-    notes: list[str] = Field(default_factory=list)
+class AgentReply(BaseModel):
+    user_id: str
+    reply: str
+    needs_onboarding: bool = False
+    events: list[Event] = Field(default_factory=list)
 
 
-class VideoRequest(BaseModel):
-    """Backend video job: generate, drop-in edit, inpaint, or keyframe interpolation."""
-
-    mode: VideoMode = "generate"
-    prompt: str = Field(min_length=3)
-    video_path: str | None = None
-    first_frame_path: str | None = None
-    last_frame_path: str | None = None
-    mask_path: str | None = None
-    aspect_ratio: str = "9:16"
-    resolution: str = "720p"
-    previous_interaction_id: str | None = None
+class InboundMessage(BaseModel):
+    from_number: str = Field(alias="from")
+    text: str = Field(min_length=1)
+    model_config = {"populate_by_name": True}
 
 
-class VideoJobResult(BaseModel):
-    job_id: str
-    agent: AgentName = "video"
-    mode: VideoMode
-    task: str
-    prompt: str
-    video_path: str | None = None
-    spec: OmniJobSpec | None = None
-    interaction: dict[str, Any] = Field(default_factory=dict)
-    interaction_id: str | None = None
-    note: str
+class ConnectRequest(BaseModel):
+    user_id: str = Field(min_length=1)
+    app: Literal["gmail"] = "gmail"

@@ -58,7 +58,7 @@ async function bootSpectrum() {
               body: JSON.stringify({ from, text }),
             });
             const result = await res.json();
-            const reply = `Okupy job ${result.job_id}: ${result.title}`;
+            const reply = result.reply || "I couldn't complete that search. Please try again.";
             if (typeof message?.reply === "function") {
               await space?.responding?.(async () => message.reply(reply));
             } else if (typeof space?.send === "function") {

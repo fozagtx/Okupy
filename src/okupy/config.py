@@ -8,17 +8,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    anthropic_api_key: str = ""
-    anthropic_base_url: str = ""
-    okupy_model: str = "claude-sonnet-4-5"
-    okupy_fallback_model: str = "claude-haiku-4-5"
-    okupy_agent_mode: str = "direct"
-
-    gemini_api_key: str = ""
-    gemini_omni_model: str = "gemini-omni-1.1-flash"
-
-    daytona_api_key: str = ""
-    daytona_api_url: str = ""
+    exa_api_key: str = ""
+    exa_api_url: str = "https://api.exa.ai/search"
+    eve_api_key: str = ""
 
     composio_api_key: str = ""
     composio_user_id: str = "okupy-owner"
@@ -35,11 +27,8 @@ class Settings(BaseSettings):
     port: int = 8000
 
     @property
-    def agent_mode(self) -> str:
-        mode = self.okupy_agent_mode.strip().lower()
-        if mode not in {"direct", "agent"}:
-            return "direct"
-        return mode
+    def package_dir(self) -> Path:
+        return Path(__file__).parent
 
 
 def get_settings() -> Settings:
