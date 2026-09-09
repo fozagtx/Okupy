@@ -1,7 +1,5 @@
 import { secret } from "./config.js";
 import { respond } from "./respond.js";
-import { Spectrum } from "spectrum-ts";
-import { imessage } from "spectrum-ts/providers/imessage";
 import { setSpectrum } from "./spectrum-state.js";
 
 export type SpectrumStatus = "disabled" | "starting" | "ready" | "error";
@@ -22,6 +20,10 @@ export async function startPhoton(): Promise<void> {
 
   status = "starting";
   try {
+    const [{ Spectrum }, { imessage }] = await Promise.all([
+      import("spectrum-ts"),
+      import("spectrum-ts/providers/imessage"),
+    ]);
     const spectrum = await Spectrum({
       projectId,
       projectSecret,
@@ -47,6 +49,6 @@ export async function startPhoton(): Promise<void> {
     });
   } catch (error) {
     status = "error";
-    throw error;
+    console.error("Spectrum startup failed", error);
   }
 }

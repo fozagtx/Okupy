@@ -1,0 +1,25 @@
+{
+  "name": "server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.mjs",
+  "scripts": {
+    "start": "node ./index.mjs"
+  },
+  "dependencies": {
+    "@mastra/core": "1.65.0",
+    "zod": "4.6.0",
+    "@ai-sdk/openai": "4.0.65",
+    "@mastra/memory": "1.28.3",
+    "@mastra/libsql": "1.22.4",
+    "@neondatabase/serverless": "^1.1.0",
+    "@composio/core": "0.18.1",
+    "spectrum-ts": "0.4.0",
+    "hono": "4.13.7",
+    "typescript": "5.9.3"
+  },
+  "overrides": {
+    "@photon-ai/imessage-kit": "3.0.0-rc.2"
+  }
+}
