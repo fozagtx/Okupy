@@ -1,6 +1,3 @@
-# Render Blueprint for Okupy.
-# API service is backend-only (no generate UI).
-# Worker keeps the Photon iMessage sidecar alive (persistent gRPC, not a webhook).
 services:
   - type: web
     name: okupy-api
@@ -8,73 +5,39 @@ services:
     plan: starter
     buildCommand: pip install -r requirements.txt && pip install -e .
     startCommand: uvicorn okupy.api:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    disk:
+      name: okupy-memory
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
-        value: "3.12"
-      - key: OKUPY_AGENT_MODE
-        value: agent
-      - key: OKUPY_MODEL
-        value: claude-sonnet-4-5
-      - key: GEMINI_OMNI_MODEL
-        value: gemini-omni-1.1-flash
-      - key: ANTHROPIC_API_KEY
+        value: "3.12.7"
+      - key: OKUPY_DATA_DIR
+        value: /var/data
+      - key: EXA_API_KEY
         sync: false
-      - key: ANTHROPIC_BASE_URL
-        sync: false
-      - key: OKUPY_FALLBACK_MODEL
-        sync: false
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: DAYTONA_API_KEY
-        sync: false
-      - key: DAYTONA_API_URL
+      - key: EVE_API_KEY
         sync: false
       - key: COMPOSIO_API_KEY
         sync: false
       - key: COMPOSIO_USER_ID
-        sync: false
-      - key: PHOTON_PROJECT_ID
-        sync: false
-      - key: PHOTON_PROJECT_SECRET
-        sync: false
-      - key: PHOTON_SIDECAR_TOKEN
-        sync: false
-      - key: PHOTON_HOME_CHANNEL
-        sync: false
-      - key: OKUPY_PUBLIC_BASE_URL
-        sync: false
-
+        value: okupy-owner
   - type: worker
-    name: okupy-imessage
+    name: okupy-photon
     runtime: docker
     plan: starter
     dockerfilePath: ./Dockerfile
     dockerCommand: python -m okupy.worker
     envVars:
-      - key: PYTHON_VERSION
-        value: "3.12"
-      - key: OKUPY_AGENT_MODE
-        value: agent
-      - key: ANTHROPIC_API_KEY
-        sync: false
-      - key: ANTHROPIC_BASE_URL
-        sync: false
-      - key: OKUPY_MODEL
-        sync: false
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: COMPOSIO_API_KEY
-        sync: false
+      - key: OKUPY_API_URL
+        fromService:
+          type: web
+          name: okupy-api
+          envVarKey: RENDER_EXTERNAL_URL
       - key: PHOTON_PROJECT_ID
         sync: false
       - key: PHOTON_PROJECT_SECRET
         sync: false
       - key: PHOTON_SIDECAR_TOKEN
         sync: false
-      - key: PHOTON_HOME_CHANNEL
-        sync: false
-      - key: OKUPY_API_URL
-        fromService:
-          name: okupy-api
-          type: web
-          envVarKey: RENDER_EXTERNAL_URL

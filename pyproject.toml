@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "okupy"
 version = "0.1.0"
-description = "Backend for TikTok slideshows and Gemini Omni video generate/edit via a 3-agent Claude orchestration."
+description = "An iMessage-first agent that finds free-food founder events and builder credits."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -13,15 +13,11 @@ dependencies = [
   "uvicorn[standard]>=0.32.0",
   "pydantic>=2.9.0",
   "pydantic-settings>=2.6.0",
-  "pillow>=10.4.0",
   "httpx>=0.27.0",
-  "python-multipart>=0.0.12",
 ]
 
 [project.optional-dependencies]
-agents = ["claude-agent-sdk>=0.1.0"]
-video = ["google-genai>=1.0.0"]
-sandbox = ["daytona>=0.21.0"]
+agents = ["eve-sdk>=0.1.0"]
 composio = ["composio>=0.8.0"]
 dev = ["pytest>=8.3.0", "httpx>=0.27.0"]
 
@@ -32,7 +28,7 @@ okupy = "okupy.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-okupy = ["photon_sidecar/*"]
+okupy = ["photon_sidecar/*", "static/*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
