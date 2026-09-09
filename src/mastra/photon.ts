@@ -2,6 +2,7 @@ import { secret } from "./config.js";
 import { respond } from "./respond.js";
 import { Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
+import { setSpectrum } from "./spectrum-state.js";
 
 export type PhotonStatus = "disabled" | "starting" | "ready" | "error";
 
@@ -26,6 +27,7 @@ export async function startPhoton(): Promise<void> {
       projectSecret,
       providers: [imessage.config()],
     });
+    setSpectrum(spectrum);
     status = "ready";
 
     void (async () => {

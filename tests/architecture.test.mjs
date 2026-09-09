@@ -24,11 +24,12 @@ test("URLs stay in TypeScript config and out of environment configuration", () =
   const env = read(".env.example");
   const render = read("render.yaml");
   const config = read("src/mastra/config.ts");
-  assert.doesNotMatch(env, /URL=/);
-  assert.doesNotMatch(render, /URL\b/);
+  assert.doesNotMatch(env, /\bEXA_URL=|SEARCH_URL=|API_URL=/);
+  assert.doesNotMatch(render, /\bEXA_URL|SEARCH_URL|API_URL\b/);
   assert.match(config, /https:\/\/api\.exa\.ai\/search/);
   assert.match(config, /https:\/\/backend\.composio\.dev/);
   assert.doesNotMatch(`${env}\n${render}`, /EVE_API_KEY|OKUPY_API_URL/);
+  assert.match(env, /DATABASE_URL=/, "DATABASE_URL must be configured for Neon persistence");
 });
 
 test("deployment uses a reproducible Node build", () => {

@@ -20,6 +20,7 @@
     "@mastra/core": "1.65.0",
     "@mastra/libsql": "1.22.4",
     "@mastra/memory": "1.28.3",
+    "@neondatabase/serverless": "^1.1.0",
     "spectrum-ts": "0.4.0",
     "zod": "4.6.0"
   },

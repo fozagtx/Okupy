@@ -11,13 +11,19 @@ services:
       mountPath: /var/data
       sizeGB: 1
     envVars:
-      - key: OPENAI_API_KEY
+      - key: AIML_API_KEY
         sync: false
       - key: EXA_API_KEY
         sync: false
       - key: COMPOSIO_API_KEY
         sync: false
+      - key: DATABASE_URL
+        sync: false
       - key: PHOTON_PROJECT_ID
         sync: false
       - key: PHOTON_PROJECT_SECRET
+        sync: false
+      - key: SPECTRUM_PROJECT_ID
+        sync: false
+      - key: SPECTRUM_PROJECT_SECRET
         sync: false

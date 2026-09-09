@@ -6,10 +6,13 @@ import { z } from "zod";
 import { builderEventAgent } from "./agent.js";
 import { startGmailConnection } from "./composio.js";
 import { config } from "./config.js";
+import { isDatabaseConfigured, runMigrations } from "./db.js";
 import { dashboardHtml } from "./dashboard.js";
 import { photonStatus, startPhoton } from "./photon.js";
 import { builderProfileInputSchema, getProfile, saveProfile } from "./profiles.js";
+import { reminderStore } from "./reminders.js";
 import { respond } from "./respond.js";
+import { startScheduler } from "./scheduler.js";
 import { storage } from "./storage.js";
 
 const discoverSchema = z.object({
@@ -37,6 +40,12 @@ const apiHandler = (handler: ApiRouteHandler) => handler;
 
 await mkdir(config.dataDirectory, { recursive: true });
 
+if (isDatabaseConfigured()) {
+  await runMigrations();
+} else {
+  console.error("DATABASE_URL is not set — profiles and reminders will not persist across restarts.");
+}
+
 export const mastra = new Mastra({
   agents: { builderEventAgent },
   storage,
@@ -48,14 +57,24 @@ export const mastra = new Mastra({
         method: "GET",
         handler: apiHandler(async c => {
           const photon = photonStatus();
+          let database: "ready" | "error" | "unconfigured" = "unconfigured";
+          if (isDatabaseConfigured()) {
+            try {
+              await runMigrations();
+              database = "ready";
+            } catch {
+              database = "error";
+            }
+          }
           return c.json({
-            ok: photon !== "error",
+            ok: photon !== "error" && database !== "error",
             framework: "mastra",
             search: "exa",
             memory: "libsql",
+            database,
             channel: "photon-imessage",
             photon,
-          }, photon === "error" ? 503 : 200);
+          }, photon === "error" || database === "error" ? 503 : 200);
         }),
       }),
       registerApiRoute("/v1/profile/:userId", {
@@ -103,8 +122,37 @@ export const mastra = new Mastra({
           return c.html("<h1>Connected</h1><p>You can close this tab and return to Okupy.</p>");
         }),
       }),
+      registerApiRoute("/v1/reminders/:userId", {
+        method: "GET",
+        handler: apiHandler(async c => {
+          const includeFired = c.req.query("includeFired") === "true";
+          const reminders = includeFired
+            ? await reminderStore.listForUser(c.req.param("userId"))
+            : await reminderStore.listActiveForUser(c.req.param("userId"));
+          return c.json({ reminders });
+        }),
+      }),
+      registerApiRoute("/v1/reminders/:id", {
+        method: "DELETE",
+        handler: apiHandler(async c => {
+          const userId = c.req.query("userId")?.trim();
+          if (!userId) return c.json({ error: "userId query parameter is required." }, 400);
+          const reminder = await reminderStore.cancel(c.req.param("id"), userId);
+          if (!reminder) return c.json({ error: "Reminder not found." }, 404);
+          return c.json({ reminder });
+        }),
+      }),
+      registerApiRoute("/v1/reminders/:userId/history", {
+        method: "GET",
+        handler: apiHandler(async c => {
+          const limitRaw = c.req.query("limit");
+          const limit = Math.max(1, Math.min(100, Number(limitRaw) || 20));
+          return c.json({ history: await reminderStore.listHistory(c.req.param("userId"), limit) });
+        }),
+      }),
     ],
   },
 });
 
 void startPhoton().catch(error => console.error("Photon startup failed", error));
+startScheduler();

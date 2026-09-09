@@ -1,8 +1,6 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import type { NeonQueryFunction } from "@neondatabase/serverless";
 import { z } from "zod";
-import { config } from "./config.js";
+import { getDb } from "./db.js";
 
 export const builderProfileInputSchema = z.object({
   userId: z.string().trim().min(1).max(256),
@@ -24,22 +22,6 @@ type OnboardingDraft = {
   location?: string;
 };
 
-type StoreState = {
-  version: 1;
-  profiles: Record<string, BuilderProfile>;
-  onboarding: Record<string, OnboardingDraft>;
-};
-
-function dictionary<T>(value?: unknown): Record<string, T> {
-  const result = Object.create(null) as Record<string, T>;
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    for (const [key, entry] of Object.entries(value)) result[key] = entry as T;
-  }
-  return result;
-}
-
-const emptyState = (): StoreState => ({ version: 1, profiles: dictionary(), onboarding: dictionary() });
-
 export type OnboardingResult = {
   complete: boolean;
   profile?: BuilderProfile;
@@ -47,115 +29,158 @@ export type OnboardingResult = {
 };
 
 export class ProfileStore {
-  private queue: Promise<void> = Promise.resolve();
+  constructor(private readonly sql: NeonQueryFunction<false, false> = getDb()) {}
 
-  constructor(private readonly file: string) {}
+  private async readProfile(userId: string): Promise<BuilderProfile | null> {
+    const rows = await this.sql`
+      SELECT user_id, name, project, project_stage, goals, interests, location, radius_miles, updated_at
+      FROM profiles
+      WHERE user_id = ${userId}
+      LIMIT 1
+    `;
+    const row = (rows as Record<string, unknown>[])[0];
+    return row ? rowToProfile(row) : null;
+  }
 
-  private async readState(): Promise<StoreState> {
-    try {
-      const parsed = JSON.parse(await readFile(this.file, "utf8")) as Partial<StoreState>;
-      if (parsed.version === 1 && parsed.profiles && parsed.onboarding) {
-        return {
-          version: 1,
-          profiles: dictionary<BuilderProfile>(parsed.profiles),
-          onboarding: dictionary<OnboardingDraft>(parsed.onboarding),
-        };
-      }
+  private async readDraft(userId: string): Promise<OnboardingDraft | null> {
+    const rows = await this.sql`
+      SELECT step, project, location FROM onboarding_drafts WHERE user_id = ${userId} LIMIT 1
+    `;
+    const row = (rows as Record<string, unknown>[])[0];
+    if (!row) return null;
+    return {
+      step: row.step as OnboardingDraft["step"],
+      project: (row.project as string | null) ?? undefined,
+      location: (row.location as string | null) ?? undefined,
+    };
+  }
 
-      // Migrate the original flat profile document written by PR #4.
-      return { version: 1, profiles: dictionary<BuilderProfile>(parsed), onboarding: dictionary() };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return emptyState();
-      throw error;
+  async getProfile(userId: string): Promise<BuilderProfile | null> {
+    return this.readProfile(userId);
+  }
+
+  async saveProfile(input: BuilderProfileInput): Promise<BuilderProfile> {
+    const parsed = builderProfileInputSchema.parse(input);
+    const goalsJson = JSON.stringify(parsed.goals);
+    const interestsJson = JSON.stringify(parsed.interests);
+    await this.sql`
+      INSERT INTO profiles (user_id, name, project, project_stage, goals, interests, location, radius_miles, updated_at)
+      VALUES (${parsed.userId}, ${parsed.name}, ${parsed.project}, ${parsed.projectStage},
+              ${goalsJson}::jsonb, ${interestsJson}::jsonb, ${parsed.location}, ${parsed.radiusMiles}, now())
+      ON CONFLICT (user_id) DO UPDATE SET
+        name = EXCLUDED.name,
+        project = EXCLUDED.project,
+        project_stage = EXCLUDED.project_stage,
+        goals = EXCLUDED.goals,
+        interests = EXCLUDED.interests,
+        location = EXCLUDED.location,
+        radius_miles = EXCLUDED.radius_miles,
+        updated_at = now()
+    `;
+    await this.sql`DELETE FROM onboarding_drafts WHERE user_id = ${parsed.userId}`;
+    const profile = await this.readProfile(parsed.userId);
+    if (!profile) throw new Error("Profile write did not persist.");
+    return profile;
+  }
+
+  async hasOnboarding(userId: string): Promise<boolean> {
+    const draft = await this.readDraft(userId);
+    return draft !== null;
+  }
+
+  async beginOnboarding(userId: string): Promise<string> {
+    await this.sql`
+      INSERT INTO onboarding_drafts (user_id, step) VALUES (${userId}, 'project')
+      ON CONFLICT (user_id) DO NOTHING
+    `;
+    return "First, what are you building?";
+  }
+
+  async advanceOnboarding(userId: string, message: string): Promise<OnboardingResult> {
+    const value = message.trim();
+    if (value.length < 2) {
+      return { complete: false, reply: "Please add a little more detail so I can remember it." };
     }
-  }
+    const draft = (await this.readDraft(userId)) ?? { step: "project" as const };
 
-  private async writeState(state: StoreState): Promise<void> {
-    await mkdir(dirname(this.file), { recursive: true });
-    const temporary = `${this.file}.${process.pid}.${randomUUID()}.tmp`;
-    await writeFile(temporary, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
-    await rename(temporary, this.file);
-  }
+    if (draft.step === "project") {
+      await this.upsertDraft(userId, { step: "location", project: value.slice(0, 2_000), location: draft.location });
+      return { complete: false, reply: "Got it. What city or area should I search near?" };
+    }
 
-  private exclusive<T>(operation: () => Promise<T>): Promise<T> {
-    const result = this.queue.then(operation, operation);
-    this.queue = result.then(() => undefined, () => undefined);
-    return result;
-  }
+    if (draft.step === "location") {
+      await this.upsertDraft(userId, { step: "goals", project: draft.project, location: value.slice(0, 240) });
+      return { complete: false, reply: "Last one: who or what do you need—cofounders, customers, feedback, credits, or something else?" };
+    }
 
-  getProfile(userId: string): Promise<BuilderProfile | null> {
-    return this.exclusive(async () => {
-      const profiles = (await this.readState()).profiles;
-      return Object.hasOwn(profiles, userId) ? profiles[userId] : null;
+    const goals = value.split(/,|\band\b/i).map(goal => goal.trim()).filter(Boolean).slice(0, 20);
+    if (!draft.project || !draft.location) {
+      return { complete: false, reply: "Something went off track. Tell me again what you're building." };
+    }
+    const profile = await this.saveProfile({
+      userId,
+      project: draft.project,
+      location: draft.location,
+      goals,
+      interests: [],
     });
+    return { complete: true, profile, reply: "You're set. What kind of event should I find for you?" };
   }
 
-  saveProfile(input: BuilderProfileInput): Promise<BuilderProfile> {
-    return this.exclusive(async () => {
-      const state = await this.readState();
-      const profile = { ...builderProfileInputSchema.parse(input), updatedAt: new Date().toISOString() };
-      state.profiles[profile.userId] = profile;
-      delete state.onboarding[profile.userId];
-      await this.writeState(state);
-      return profile;
-    });
-  }
-
-  beginOnboarding(userId: string): Promise<string> {
-    return this.exclusive(async () => {
-      const state = await this.readState();
-      state.onboarding[userId] ??= { step: "project" };
-      await this.writeState(state);
-      return "First, what are you building?";
-    });
-  }
-
-  advanceOnboarding(userId: string, message: string): Promise<OnboardingResult> {
-    return this.exclusive(async () => {
-      const value = message.trim();
-      const state = await this.readState();
-      const draft = state.onboarding[userId] ?? { step: "project" as const };
-
-      if (value.length < 2) {
-        return { complete: false, reply: "Please add a little more detail so I can remember it." };
-      }
-
-      if (draft.step === "project") {
-        state.onboarding[userId] = { step: "location", project: value.slice(0, 2_000) };
-        await this.writeState(state);
-        return { complete: false, reply: "Got it. What city or area should I search near?" };
-      }
-
-      if (draft.step === "location") {
-        state.onboarding[userId] = { ...draft, step: "goals", location: value.slice(0, 240) };
-        await this.writeState(state);
-        return { complete: false, reply: "Last one: who or what do you need—cofounders, customers, feedback, credits, or something else?" };
-      }
-
-      const goals = value.split(/,|\band\b/i).map(goal => goal.trim()).filter(Boolean).slice(0, 20);
-      const profile = {
-        ...builderProfileInputSchema.parse({
-          userId,
-          project: draft.project,
-          location: draft.location,
-          goals,
-          interests: [],
-        }),
-        updatedAt: new Date().toISOString(),
-      };
-      state.profiles[userId] = profile;
-      delete state.onboarding[userId];
-      await this.writeState(state);
-      return { complete: true, profile, reply: "You're set. What kind of event should I find for you?" };
-    });
-  }
-
-  hasOnboarding(userId: string): Promise<boolean> {
-    return this.exclusive(async () => Boolean((await this.readState()).onboarding[userId]));
+  private async upsertDraft(userId: string, draft: OnboardingDraft): Promise<void> {
+    await this.sql`
+      INSERT INTO onboarding_drafts (user_id, step, project, location, updated_at)
+      VALUES (${userId}, ${draft.step}, ${draft.project ?? null}, ${draft.location ?? null}, now())
+      ON CONFLICT (user_id) DO UPDATE SET
+        step = EXCLUDED.step,
+        project = EXCLUDED.project,
+        location = EXCLUDED.location,
+        updated_at = now()
+    `;
   }
 }
 
-export const profileStore = new ProfileStore(config.profileFile);
+function rowToProfile(row: Record<string, unknown>): BuilderProfile {
+  return {
+    userId: row.user_id as string,
+    name: (row.name as string | null) ?? "",
+    project: row.project as string,
+    projectStage: (row.project_stage as string | null) ?? "building",
+    goals: parseJsonArray(row.goals),
+    interests: parseJsonArray(row.interests),
+    location: row.location as string,
+    radiusMiles: (row.radius_miles as number | null) ?? 25,
+    updatedAt: new Date(row.updated_at as string).toISOString(),
+  };
+}
 
-export const getProfile = (userId: string) => profileStore.getProfile(userId);
-export const saveProfile = (profile: BuilderProfileInput) => profileStore.saveProfile(profile);
+function parseJsonArray(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String);
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed.map(String) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+export const profileStore = new Proxy({} as ProfileStore, {
+  get(_target, prop, receiver) {
+    const instance = defaultInstance();
+    return Reflect.get(instance, prop, receiver);
+  },
+});
+
+function defaultInstance(): ProfileStore {
+  const globalScope = globalThis as { __okupyProfileStore?: ProfileStore };
+  if (!globalScope.__okupyProfileStore) {
+    globalScope.__okupyProfileStore = new ProfileStore(getDb());
+  }
+  return globalScope.__okupyProfileStore;
+}
+
+export const getProfile = (userId: string) => defaultInstance().getProfile(userId);
+export const saveProfile = (profile: BuilderProfileInput) => defaultInstance().saveProfile(profile);

@@ -33,10 +33,10 @@ export async function respond(userId: string, message: string): Promise<AgentRep
       needsOnboarding: false,
     };
   }
-  if (!secret("OPENAI_API_KEY")) {
+  if (!secret("AIML_API_KEY")) {
     return {
       userId: normalizedUserId,
-      reply: "I remember what you're building. Add OPENAI_API_KEY so I can coordinate live event discovery.",
+      reply: "I remember what you're building. Add AIML_API_KEY so I can coordinate live event discovery.",
       needsOnboarding: false,
     };
   }
