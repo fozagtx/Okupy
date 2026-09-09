@@ -5,7 +5,7 @@ import uuid
 from pathlib import Path
 
 from okupy.agents.definitions import AGENT_NAMES
-from okupy.config import Settings
+from okupy.config import PHOTON_SIDECAR_URL, Settings
 from okupy.integrations.composio_gmail import ComposioGmail
 from okupy.integrations.photon import PhotonClient
 from okupy.model_builder import ModelBuilder, ResolvedModel
@@ -112,7 +112,7 @@ class Supervisor:
         self.settings = settings
         self.builder = builder or ModelBuilder(settings)
         self.tools = JobTools(settings)
-        self.photon = PhotonClient(settings.photon_sidecar_url, settings.photon_sidecar_token)
+        self.photon = PhotonClient(PHOTON_SIDECAR_URL, settings.photon_sidecar_token)
         self.gmail = ComposioGmail(settings.composio_api_key, settings.composio_user_id)
 
     def plan(self, request: GenerateRequest) -> list[AgentName]:

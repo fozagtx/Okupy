@@ -4,9 +4,14 @@
  */
 import http from "node:http";
 
-const port = Number(process.env.PHOTON_SIDECAR_PORT || 8789);
+const option = (name, fallback) => {
+  const index = process.argv.indexOf(name);
+  return index === -1 ? fallback : process.argv[index + 1];
+};
+
+const port = Number(option("--port", "8789"));
 const token = process.env.PHOTON_SIDECAR_TOKEN || "";
-const apiUrl = (process.env.OKUPY_API_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+const apiUrl = option("--agent-url", "http://127.0.0.1:8000").replace(/\/$/, "");
 
 let app = null;
 
@@ -58,7 +63,7 @@ async function bootSpectrum() {
               body: JSON.stringify({ from, text }),
             });
             const result = await res.json();
-            const reply = `Okupy job ${result.job_id}: ${result.title}`;
+            const reply = result.reply || "I couldn't complete that search. Please try again.";
             if (typeof message?.reply === "function") {
               await space?.responding?.(async () => message.reply(reply));
             } else if (typeof space?.send === "function") {

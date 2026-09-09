@@ -11,7 +11,7 @@ from pathlib import Path
 
 import httpx
 
-from okupy.config import get_settings
+from okupy.config import PHOTON_AGENT_URL, get_settings
 
 SIDECAR_DIR = Path(__file__).parent / "photon_sidecar"
 
@@ -26,11 +26,9 @@ def main() -> int:
     env["PHOTON_PROJECT_ID"] = settings.photon_project_id
     env["PHOTON_PROJECT_SECRET"] = settings.photon_project_secret
     env["PHOTON_SIDECAR_TOKEN"] = settings.photon_sidecar_token
-    env["OKUPY_API_URL"] = settings.okupy_api_url or settings.okupy_public_base_url
-    env["PHOTON_SIDECAR_PORT"] = "8789"
 
     proc = subprocess.Popen(
-        ["node", "index.mjs"],
+        ["node", "index.mjs", "--agent-url", PHOTON_AGENT_URL, "--port", "8789"],
         cwd=SIDECAR_DIR,
         env=env,
     )
@@ -46,7 +44,7 @@ def main() -> int:
     signal.signal(signal.SIGTERM, _stop)
     signal.signal(signal.SIGINT, _stop)
 
-    api = env["OKUPY_API_URL"].rstrip("/")
+    api = PHOTON_AGENT_URL.rstrip("/")
     while True:
         if proc.poll() is not None:
             print("Photon sidecar exited.", file=sys.stderr)

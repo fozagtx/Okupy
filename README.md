@@ -1,78 +1,38 @@
 # Okupy
 
-Backend for a tutorial engine: JSON API that turns a tutorial into a TikTok slideshow and generates or **edits** Google Gemini Omni videos.
+Okupy is an iMessage-first agent for builders who have been heads-down too long. It remembers what each person is building, uses Exa to find nearby events with free food and useful people, and highlights opportunities offering cloud/API credits or other startup perks.
 
-This is **not** a web app. There is no generate UI. Call the API (or the CLI). FastAPI `/docs` is OpenAPI for the backend.
+## Flow
 
-Three Claude Agent SDK agents run the job:
+1. The dashboard asks what you are building, where you are, and who you need to meet.
+2. Durable SQLite memory stores that profile under the user's channel ID.
+3. The agent turns the profile into an Exa search for current, local opportunities.
+4. Results are labelled for food, networking, and builder credits, with source URLs.
+5. Photon Spectrum carries the conversation over iMessage. Composio provides Gmail authorization.
 
-1. **supervisor** — routes the request, picks a model profile, handles Gmail/iMessage
-2. **slideshow** — writes a 9:16 carousel and asks Daytona for screenshots
-3. **video** — Gemini Omni generate, drop-in clip edit, inpaint, and keyframe interpolation
-
-This is **not** hardcoded to Opus. The custom model builder swaps the Anthropic API key, base URL, and model id.
-
-Architecture: [docs/architecture.md](docs/architecture.md).
-
-## Quick start
+## Local setup
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-cp .env.example .env
+python -m venv .venv && source .venv/bin/activate
+pip install -e '.[dev,composio]'
+cp .env.example .env # add EXA_API_KEY
 uvicorn okupy.api:app --reload
 ```
 
-```bash
-curl -s http://localhost:8000/health
-curl -s -X POST http://localhost:8000/v1/generate \
-  -H 'Content-Type: application/json' \
-  -d '{"title":"30-second omelette","tutorial":"1. Heat the pan. 2. Add eggs. 3. Fold.","outputs":["slideshow"]}'
-```
-
-Drop a clip to edit:
+Open <http://localhost:8000>. API docs are at `/docs`.
 
 ```bash
-curl -s -X POST http://localhost:8000/v1/videos/drop \
-  -F mode=inpaint \
-  -F prompt='remove the watermark' \
-  -F video=@talking-head.mp4
+curl -X PUT localhost:8000/v1/profile/demo -H 'content-type: application/json' -d '{
+  "user_id":"demo", "project":"privacy-first CRM for freelancers",
+  "location":"Brooklyn, NY", "goals":["customers","feedback"], "interests":["AI","SaaS"]
+}'
+curl -X POST localhost:8000/v1/discover -H 'content-type: application/json' -d '{
+  "user_id":"demo", "message":"What should I attend this week?"
+}'
 ```
 
-Keyframe interpolation (first + last frame):
+## Deployment
 
-```bash
-curl -s -X POST http://localhost:8000/v1/videos/drop \
-  -F mode=keyframes \
-  -F prompt='smooth push-in, keep lighting' \
-  -F first_frame=@start.png \
-  -F last_frame=@end.png
-```
+Create a Render Blueprint from `render.yaml`, then set the Exa, Composio, and Photon credentials. The API uses a persistent disk for memory; the Photon worker keeps the iMessage stream alive. API URLs are constants in `src/okupy/config.py`, not environment variables.
 
-CLI:
-
-```bash
-okupy "1. Heat the pan. 2. Add eggs. 3. Fold the omelette." --title "30-second omelette"
-okupy video inpaint "remove the logo" --clip talking-head.mp4
-okupy video keyframes "sunrise to sunset" --first-frame start.png --last-frame end.png
-okupy video edit "make this anime" --clip talking-head.mp4
-```
-
-## Integrations
-
-| Piece | Role |
-| --- | --- |
-| Claude Agent SDK | Supervisor + 2 specialists (`OKUPY_AGENT_MODE=agent`) |
-| Custom model builder | `POST /v1/models` or `OKUPY_MODEL` / `ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL` |
-| Gemini Omni | Generate, edit, inpaint, keyframes via Interactions API |
-| Daytona | Sandbox screenshots after slides are done |
-| Photon Spectrum | DM the agent over iMessage (Node sidecar + Render worker) |
-| Composio | Gmail (and later other apps) OAuth |
-| Render | `render.yaml` — API service + iMessage worker |
-
-Direct mode (`OKUPY_AGENT_MODE=direct`) uses the same three-agent plan without calling Anthropic, so slideshows and video *planning* work in CI.
-
-## Deploy
-
-Connect the repo to Render. The Blueprint in `render.yaml` creates `okupy-api` and `okupy-imessage`. Set the `sync: false` secrets in the dashboard.
+See [the architecture guide](docs/architecture.md) for trust boundaries and production notes.

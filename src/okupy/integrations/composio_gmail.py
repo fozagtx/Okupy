@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 from dataclasses import dataclass
 
 
@@ -8,6 +9,7 @@ class GmailAuth:
     redirect_url: str
     user_id: str
     note: str
+    status: str = "pending"
 
 
 class ComposioGmail:
@@ -22,11 +24,12 @@ class ComposioGmail:
                 redirect_url="",
                 user_id=uid,
                 note="COMPOSIO_API_KEY is not set. Add it to connect Gmail.",
+                status="not_configured",
             )
-        try:
-            from composio import Composio
-        except ImportError:
-            return GmailAuth(redirect_url="", user_id=uid, note="composio SDK is not installed.")
+        if importlib.util.find_spec("composio") is None:
+            return GmailAuth(redirect_url="", user_id=uid, note="composio SDK is not installed.", status="unavailable")
+
+        from composio import Composio
 
         composio = Composio(api_key=self.api_key)
         session = composio.create(user_id=uid)
