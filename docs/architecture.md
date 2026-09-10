@@ -2,7 +2,7 @@
 
 > Project name is **Okupy** (`okupy`, service `okupy-api`).
 
-Okupy is a TypeScript Node service built on the Vercel AI SDK over Photon Spectrum. Two iMessage-first agents share one inbound router, one Neon Postgres database, and one Spectrum iMessage transport.
+Okupy is a Photon-native iMessage concierge powered by Photon Spectrum and built with the Vercel AI SDK on Node.js. Two agents share one inbound router, one Neon Postgres database, and one Photon Spectrum transport.
 
 ```mermaid
 flowchart LR
