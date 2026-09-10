@@ -7,27 +7,24 @@
     "node": ">=22 <23"
   },
   "scripts": {
-    "dev": "mastra dev",
-    "build": "mastra build",
-    "start": "mastra start",
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
     "check:conflicts": "node scripts/check-conflicts.mjs",
     "test": "npm run check:conflicts && node --test tests/*.test.mjs && tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/openai": "4.0.65",
+    "@ai-sdk/openai": "^4.0.65",
     "@composio/core": "0.18.1",
-    "@mastra/core": "1.65.0",
-    "@mastra/libsql": "1.22.4",
-    "@mastra/memory": "1.28.3",
     "@neondatabase/serverless": "^1.1.0",
     "@spectrum-ts/core": "^12.8.0",
     "@spectrum-ts/imessage": "^12.8.0",
+    "ai": "^7.0.97",
     "zod": "4.6.0"
   },
   "devDependencies": {
     "@types/node": "22.20.2",
-    "mastra": "1.28.0",
     "tsx": "4.23.13",
     "typescript": "5.9.3"
   }

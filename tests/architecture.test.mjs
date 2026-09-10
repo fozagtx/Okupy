@@ -7,12 +7,14 @@ import test from "node:test";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const read = path => readFileSync(join(root, path), "utf8");
 
-test("the application is a TypeScript Mastra service", () => {
+test("the application is a TypeScript AI SDK service", () => {
   const pkg = JSON.parse(read("package.json"));
   const render = read("render.yaml");
-  const source = read("src/mastra/index.ts");
-  assert.ok(pkg.dependencies["@mastra/core"]);
-  assert.match(source, /new Mastra/);
+  const source = read("src/server.ts");
+  assert.ok(pkg.dependencies["@ai-sdk/openai"]);
+  assert.ok(pkg.dependencies["ai"]);
+  assert.equal(pkg.dependencies["@mastra/core"], undefined, "Mastra must be fully removed");
+  assert.match(source, /createServer/);
   assert.match(render, /runtime: node/);
   assert.doesNotMatch(render, /python|uvicorn|docker/i);
   assert.equal(existsSync(join(root, "src/okupy")), false, "legacy Python backend must stay removed");
@@ -24,12 +26,15 @@ test("URLs stay in TypeScript config and out of environment configuration", () =
   const env = read(".env.example");
   const render = read("render.yaml");
   const config = read("src/mastra/config.ts");
-  assert.doesNotMatch(env, /\bEXA_URL=|SEARCH_URL=|API_URL=/);
-  assert.doesNotMatch(render, /\bEXA_URL|SEARCH_URL|API_URL\b/);
+  const amazon = read("src/mastra/amazon.ts");
+  assert.doesNotMatch(env, /\bEXA_URL=|SEARCH_URL=|API_URL=|FIRECRAWL_URL=/);
+  assert.doesNotMatch(render, /\bEXA_URL|SEARCH_URL|API_URL|FIRECRAWL_URL\b/);
   assert.match(config, /https:\/\/api\.exa\.ai\/search/);
   assert.match(config, /https:\/\/backend\.composio\.dev/);
+  assert.match(amazon, /https:\/\/api\.firecrawl\.dev\/v2\/extract/);
   assert.doesNotMatch(`${env}\n${render}`, /EVE_API_KEY|OKUPY_API_URL/);
   assert.match(env, /DATABASE_URL=/, "DATABASE_URL must be configured for Neon persistence");
+  assert.match(env, /FIRECRAWL_API_KEY=/, "Firecrawl key is required for Amazon scraping");
 });
 
 test("deployment uses a reproducible Node build", () => {

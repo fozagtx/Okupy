@@ -1,22 +1,26 @@
 # Okupy
 
-Okupy is a TypeScript Mastra agent for builders who have been heads-down too long. It remembers what each person is building, uses Exa to find nearby events with free food and useful people, schedules timed iMessage reminders, and replies over Photon Spectrum iMessage.
+Okupy is a Node service that runs two iMessage-first agents over Photon Spectrum:
+
+1. **Event scout** — remembers what each user is building, uses Exa to find nearby events with free food and useful people, schedules timed iMessage reminders.
+2. **Amazon watch** — tracks Amazon products the user pastes, scrapes each one via Firecrawl every 24h, and iMessages the user the moment a price drops or a target is hit.
+
+Both agents use the **Vercel AI SDK** (`generateText` + tools) backed by `gpt-4o-mini` via AIML API. Conversation threads live in Postgres so memory survives restarts. Photon Spectrum carries iMessage in and out, while Composio provides a Gmail Connect Link.
 
 ## Flow
 
 1. The dashboard or iMessage onboarding records what you are building, where you are, and who you need to meet.
-2. A Neon Postgres database retains profiles, onboarding drafts, reminders, and an audit trail of delivered reminders across deploys. LibSQL keeps the recent Mastra thread memory hot.
-3. A typed Mastra tool turns the profile into a time-bounded Exa search for current local opportunities.
-4. Results are classified for food, networking, and builder credits, with source links and an RSVP reminder.
-5. After every discovery turn the agent deterministically asks whether to schedule reminders and acts on natural-language batch instructions like "go through the scans and pick the ones to schedule invites for".
-6. A 30s scheduler ticks, fires due reminders through the same agent, and delivers via Spectrum iMessage (or logs when Photon is offline).
-7. Photon Spectrum carries the same agent conversation over iMessage, while Composio provides a Gmail Connect Link.
+2. Neon Postgres persists profiles, onboarding drafts, reminders, agent threads, watched Amazon items, price history, and watch alerts.
+3. The event agent uses Exa to search for current events, classifies for food/networking/builder credits, and schedules timed reminders via the same scheduler.
+4. The watch agent accepts an Amazon URL, scrapes it through Firecrawl `/extract` with a JSON schema, stores the canonical title/price/image/ASIN.
+5. A hourly scheduler checks each watched item once every 24h (staggered by `created_at`) and texts the user on Spectrum iMessage when the price drops.
+6. Photon Spectrum delivers inbound iMessage to the right agent based on URL/keyword routing — Amazon requests go to the watch agent, everything else to the event agent.
 
 ## Local setup
 
 ```bash
 npm install
-cp .env.example .env # add AIML_API_KEY and EXA_API_KEY, plus DATABASE_URL from Neon
+cp .env.example .env # add AIML_API_KEY, EXA_API_KEY, FIRECRAWL_API_KEY, plus DATABASE_URL
 npm run dev
 ```
 
@@ -27,7 +31,7 @@ export DATABASE_URL_TEST=postgresql://…branch-host…?sslmode=require
 npm test
 ```
 
-Open <http://localhost:4111>. Mastra also exposes its standard developer APIs and Studio.
+Open <http://localhost:4111> for the dashboard.
 
 Useful validation commands:
 
@@ -39,6 +43,6 @@ npm run build
 
 ## Deployment
 
-Create a Neon project, copy the pooled connection string into Render as `DATABASE_URL`, then create a Render Blueprint from `render.yaml` with the AIML, Exa, Composio, and Photon credentials. The agent routes to AIML API (`https://api.aimlapi.com/v1`) using `gpt-4o-mini`. One Node service runs both Mastra and Photon. Schema migrations run on startup, so no separate migration step is required. Public integration locations are constants in `src/mastra/config.ts`; there are no URL environment variables or Python services.
+Create a Neon project, copy the pooled connection string into Render as `DATABASE_URL`, then create a Render Blueprint from `render.yaml` with `AIML_API_KEY`, `EXA_API_KEY`, `FIRECRAWL_API_KEY`, `COMPOSIO_API_KEY`, and Photon/Spectrum credentials. One Node service runs the HTTP server, both agents, both schedulers, and Photon. Schema migrations run on startup. Public integration locations are constants in `src/mastra/config.ts`.
 
 See [the architecture guide](docs/architecture.md) for trust boundaries and production notes.

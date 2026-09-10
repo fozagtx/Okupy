@@ -1,18 +1,21 @@
+import { generateText, tool, stepCountIs } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
-import { Agent } from "@mastra/core/agent";
-import { Memory } from "@mastra/memory";
-import { storage } from "./storage.js";
-import { cancelReminder, findBuilderEvents, listReminders, scheduleReminder } from "./tools.js";
+import { eventTools } from "./tools.js";
+import { threadStore } from "./threads.js";
 
 const aiml = createOpenAI({
   baseURL: "https://api.aimlapi.com/v1",
   apiKey: process.env.AIML_API_KEY,
 });
 
-export const builderEventAgent = new Agent({
-  id: "builder-event-agent",
-  name: "Builder Event Agent",
-  instructions: `You help isolated builders leave the build cave for worthwhile nearby events.
+const aiEventTools = {
+  findBuilderEvents: tool(eventTools.findBuilderEvents),
+  scheduleReminder: tool(eventTools.scheduleReminder),
+  listReminders: tool(eventTools.listReminders),
+  cancelReminder: tool(eventTools.cancelReminder),
+};
+
+const EVENT_SYSTEM_PROMPT = `You help isolated builders leave the build cave for worthwhile nearby events.
 You are NOT a passive chatbot — you are a deterministic agent: every event list ends with the same
 prompt asking whether the user wants reminders scheduled, and you act on the answer.
 
@@ -35,16 +38,30 @@ apply". Resolve natural-language offsets to a concrete ISO datetime in the user'
 - "the night before" → event datetime − 18h
 
 When the user says something like "go through the scans and pick the ones to schedule invites for",
-interpret it as: enumerate every returned event that matches the requested filter (free food, credits,
-cofounder events, etc.) and call scheduleReminder for each one with the event title, URL, and a short
-"apply / RSVP" message. Then summarise what you scheduled.
+interpret it as: enumerate every returned event that matches the requested filter and call
+scheduleReminder for each one with the event title, URL, and a short "apply / RSVP" message. Then
+summarise what you scheduled.
 
 Confirm after scheduling. Reply in one short sentence naming the event, the fire time, and the
 channel (iMessage). If multiple reminders were created, list them compactly.
 
-Inspect and cancel. Use listReminders to recap what is queued and cancelReminder (with the
-reminder id) to drop a reminder. Never invent event URLs you did not return from findBuilderEvents.`,
-  model: aiml("gpt-4o-mini"),
-  tools: { findBuilderEvents, scheduleReminder, listReminders, cancelReminder },
-  memory: new Memory({ storage, options: { lastMessages: 20 } }),
-});
+Inspect and cancel. Use listReminders to recap what is queued and cancelReminder (with the reminder
+id) to drop a reminder. Never invent event URLs you did not return from findBuilderEvents.`;
+
+export async function runEventAgent(userId: string, prompt: string): Promise<{ reply: string }> {
+  const history = await threadStore.list(userId);
+  const result = await generateText({
+    model: aiml("gpt-4o-mini"),
+    system: EVENT_SYSTEM_PROMPT,
+    tools: aiEventTools,
+    stopWhen: stepCountIs(6),
+    messages: [
+      ...history.map(entry => ({ role: entry.role, content: entry.content })),
+      { role: "user" as const, content: prompt },
+    ],
+  });
+  const now = new Date().toISOString();
+  await threadStore.append(userId, { role: "user", content: prompt, at: now });
+  await threadStore.append(userId, { role: "assistant", content: result.text, at: now });
+  return { reply: result.text };
+}

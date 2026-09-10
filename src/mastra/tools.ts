@@ -1,4 +1,3 @@
-import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { config, secret } from "./config.js";
 import { reminderStore } from "./reminders.js";
@@ -49,135 +48,138 @@ export function classifyEvent(item: unknown, location: string, project: string):
   };
 }
 
-export const findBuilderEvents = createTool({
-  id: "find-builder-events",
-  description: "Find current local events offering food, networking, startup perks, or builder credits.",
-  inputSchema: z.object({
-    location: z.string().trim().min(2),
-    project: z.string().trim().min(2),
-    interests: z.array(z.string()).default([]),
-    radiusMiles: z.number().int().min(1).max(250).default(25),
-    request: z.string().default("Find me something worthwhile this week"),
-  }),
-  outputSchema: z.object({ results: z.array(eventSchema) }),
-  execute: async input => {
-    const apiKey = secret("EXA_API_KEY");
-    if (!apiKey) throw new Error("EXA_API_KEY is required for event discovery.");
-
-    const now = new Date();
-    const until = new Date(now.getTime() + config.searchWindowDays * 86_400_000);
-    const query = [
-      `Upcoming free in-person founder, startup, developer, demo day, hackathon, or community events within ${input.radiusMiles} miles of "${input.location}"`,
-      `between ${now.toISOString().slice(0, 10)} and ${until.toISOString().slice(0, 10)}.`,
-      "Prioritize explicit free food, pizza, meals, refreshments, networking, cloud credits, grants, or startup perks.",
-      `Relevant to: ${input.project}; ${input.interests.join(", ")}. Request: ${input.request}`,
-    ].join(" ");
-    const response = await fetch(config.exaSearchUrl, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-api-key": apiKey },
-      body: JSON.stringify({
-        query,
-        type: "auto",
-        numResults: config.maxResults,
-        startPublishedDate: `${now.toISOString().slice(0, 10)}T00:00:00.000Z`,
-        contents: { text: { maxCharacters: 1_800 } },
-      }),
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!response.ok) throw new Error(`Exa search failed (${response.status}).`);
-
-    const body = z.object({ results: z.array(z.unknown()).optional() }).parse(await response.json());
-    return {
-      results: (body.results ?? [])
-        .map(item => classifyEvent(item, input.location, input.project))
-        .filter((event): event is BuilderEvent => event !== null),
-    };
-  },
+const findBuilderEventsParameters = z.object({
+  location: z.string().trim().min(2),
+  project: z.string().trim().min(2),
+  interests: z.array(z.string()).default([]),
+  radiusMiles: z.number().int().min(1).max(250).default(25),
+  request: z.string().default("Find me something worthwhile this week"),
 });
 
-const reminderSummarySchema = z.object({
-  id: z.string(),
-  fireAt: z.string(),
-  message: z.string(),
-  eventTitle: z.string().nullable(),
-  eventUrl: z.url().nullable(),
-  status: z.enum(["pending", "fired", "cancelled"]),
+export async function executeFindBuilderEvents(input: z.input<typeof findBuilderEventsParameters>): Promise<{ results: BuilderEvent[] }> {
+  const apiKey = secret("EXA_API_KEY");
+  if (!apiKey) throw new Error("EXA_API_KEY is required for event discovery.");
+
+  const parsed = findBuilderEventsParameters.parse(input);
+  const now = new Date();
+  const until = new Date(now.getTime() + config.searchWindowDays * 86_400_000);
+  const query = [
+    `Upcoming free in-person founder, startup, developer, demo day, hackathon, or community events within ${parsed.radiusMiles} miles of "${parsed.location}"`,
+    `between ${now.toISOString().slice(0, 10)} and ${until.toISOString().slice(0, 10)}.`,
+    "Prioritize explicit free food, pizza, meals, refreshments, networking, cloud credits, grants, or startup perks.",
+    `Relevant to: ${parsed.project}; ${parsed.interests.join(", ")}. Request: ${parsed.request}`,
+  ].join(" ");
+  const response = await fetch(config.exaSearchUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-api-key": apiKey },
+    body: JSON.stringify({
+      query,
+      type: "auto",
+      numResults: config.maxResults,
+      startPublishedDate: `${now.toISOString().slice(0, 10)}T00:00:00.000Z`,
+      contents: { text: { maxCharacters: 1_800 } },
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) throw new Error(`Exa search failed (${response.status}).`);
+
+  const body = z.object({ results: z.array(z.unknown()).optional() }).parse(await response.json());
+  return {
+    results: (body.results ?? [])
+      .map(item => classifyEvent(item, parsed.location, parsed.project))
+      .filter((event): event is BuilderEvent => event !== null),
+  };
+}
+
+const scheduleReminderParameters = z.object({
+  userId: z.string().trim().min(1).max(256),
+  fireAt: z.string().describe("ISO-8601 datetime when the reminder should fire"),
+  message: z.string().trim().min(1).max(1_000).describe("Short iMessage-friendly reminder text"),
+  eventTitle: z.string().trim().max(240).optional(),
+  eventUrl: z.url().optional(),
 });
 
-export const scheduleReminder = createTool({
-  id: "schedule-reminder",
-  description: "Schedule a reminder message for a future time. Use after findBuilderEvents when the user says \"remind me\", \"set a timer\", \"ping me in 4 hours\", or \"remind me 12 hours before\". Times must be in the future. Returns the persisted reminder so the agent can confirm.",
-  inputSchema: z.object({
-    userId: z.string().trim().min(1).max(256),
-    fireAt: z.iso.datetime({ offset: true }).describe("ISO-8601 datetime when the reminder should fire"),
-    message: z.string().trim().min(1).max(1_000).describe("Short iMessage-friendly reminder text"),
-    eventTitle: z.string().trim().max(240).optional(),
-    eventUrl: z.url().optional(),
-  }),
-  outputSchema: reminderSummarySchema,
-  execute: async input => {
-    const fireAt = new Date(input.fireAt);
-    if (Number.isNaN(fireAt.getTime())) throw new Error("fireAt must be a valid ISO datetime.");
-    if (fireAt.getTime() <= Date.now()) throw new Error("fireAt must be in the future.");
-    const reminder = await reminderStore.create({ ...input, fireAt: fireAt.toISOString() });
-    return {
+export async function executeScheduleReminder(input: z.input<typeof scheduleReminderParameters>) {
+  const parsed = scheduleReminderParameters.parse(input);
+  const fireAt = new Date(parsed.fireAt);
+  if (Number.isNaN(fireAt.getTime())) throw new Error("fireAt must be a valid ISO datetime.");
+  if (fireAt.getTime() <= Date.now()) throw new Error("fireAt must be in the future.");
+  const reminder = await reminderStore.create({ ...parsed, fireAt: fireAt.toISOString() });
+  return {
+    id: reminder.id,
+    fireAt: reminder.fireAt,
+    message: reminder.message,
+    eventTitle: reminder.eventTitle ?? null,
+    eventUrl: reminder.eventUrl ?? null,
+    status: reminder.status,
+  };
+}
+
+const listRemindersParameters = z.object({
+  userId: z.string().trim().min(1).max(256),
+  includeFired: z.boolean().default(false),
+});
+
+export async function executeListReminders(input: z.input<typeof listRemindersParameters>) {
+  const parsed = listRemindersParameters.parse(input);
+  const all = parsed.includeFired
+    ? await reminderStore.listForUser(parsed.userId)
+    : await reminderStore.listActiveForUser(parsed.userId);
+  return {
+    reminders: all.map(reminder => ({
       id: reminder.id,
       fireAt: reminder.fireAt,
       message: reminder.message,
       eventTitle: reminder.eventTitle ?? null,
       eventUrl: reminder.eventUrl ?? null,
       status: reminder.status,
-    };
-  },
+    })),
+  };
+}
+
+const cancelReminderParameters = z.object({
+  userId: z.string().trim().min(1).max(256),
+  reminderId: z.string().trim().min(1).max(256),
 });
 
-export const listReminders = createTool({
-  id: "list-reminders",
-  description: "List reminders for a user, newest pending first. Use when the user asks what is on their schedule or wants to confirm a reminder was set.",
-  inputSchema: z.object({
-    userId: z.string().trim().min(1).max(256),
-    includeFired: z.boolean().default(false),
-  }),
-  outputSchema: z.object({ reminders: z.array(reminderSummarySchema) }),
-  execute: async input => {
-    const all = input.includeFired
-      ? await reminderStore.listForUser(input.userId)
-      : await reminderStore.listActiveForUser(input.userId);
-    return {
-      reminders: all.map(reminder => ({
-        id: reminder.id,
-        fireAt: reminder.fireAt,
-        message: reminder.message,
-        eventTitle: reminder.eventTitle ?? null,
-        eventUrl: reminder.eventUrl ?? null,
-        status: reminder.status,
-      })),
-    };
-  },
-});
+export async function executeCancelReminder(input: z.input<typeof cancelReminderParameters>) {
+  const parsed = cancelReminderParameters.parse(input);
+  const reminder = await reminderStore.cancel(parsed.reminderId, parsed.userId);
+  return {
+    cancelled: reminder?.status === "cancelled",
+    reminder: reminder
+      ? {
+          id: reminder.id,
+          fireAt: reminder.fireAt,
+          message: reminder.message,
+          eventTitle: reminder.eventTitle ?? null,
+          eventUrl: reminder.eventUrl ?? null,
+          status: reminder.status,
+        }
+      : null,
+  };
+}
 
-export const cancelReminder = createTool({
-  id: "cancel-reminder",
-  description: "Cancel a pending reminder. Use when the user says \"cancel that reminder\", \"forget the reminder\", or no longer wants to be notified.",
-  inputSchema: z.object({
-    userId: z.string().trim().min(1).max(256),
-    reminderId: z.string().trim().min(1).max(256),
-  }),
-  outputSchema: z.object({ cancelled: z.boolean(), reminder: reminderSummarySchema.nullable() }),
-  execute: async input => {
-    const reminder = await reminderStore.cancel(input.reminderId, input.userId);
-    return {
-      cancelled: reminder?.status === "cancelled",
-      reminder: reminder
-        ? {
-            id: reminder.id,
-            fireAt: reminder.fireAt,
-            message: reminder.message,
-            eventTitle: reminder.eventTitle ?? null,
-            eventUrl: reminder.eventUrl ?? null,
-            status: reminder.status,
-          }
-        : null,
-    };
+export const eventTools = {
+  findBuilderEvents: {
+    description: "Find current local events offering food, networking, startup perks, or builder credits.",
+    inputSchema: findBuilderEventsParameters,
+    execute: executeFindBuilderEvents,
   },
-});
+  scheduleReminder: {
+    description:
+      'Schedule a reminder for a future time. Use after findBuilderEvents when the user says "remind me", "set a timer", "ping me in 4 hours". Times must be in the future.',
+    inputSchema: scheduleReminderParameters,
+    execute: executeScheduleReminder,
+  },
+  listReminders: {
+    description: "List reminders for a user, newest pending first.",
+    inputSchema: listRemindersParameters,
+    execute: executeListReminders,
+  },
+  cancelReminder: {
+    description: 'Cancel a pending reminder. Use when the user says "cancel that reminder".',
+    inputSchema: cancelReminderParameters,
+    execute: executeCancelReminder,
+  },
+} as const;
