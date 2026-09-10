@@ -19,15 +19,18 @@
 import { generateText, tool, stepCountIs } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
-import { config } from "./config.js";
+import { config, secret } from "./config.js";
 import { scanGmailOffers, type GmailOffer } from "./composio.js";
 import { createWatchToolsForUser } from "./watch-tools.js";
 import { threadStore } from "./threads.js";
 
-const aiml = createOpenAI({
-  baseURL: config.aimlApiBaseUrl,
-  apiKey: process.env.AIML_API_KEY,
-});
+function getAimlModel() {
+  const aiml = createOpenAI({
+    baseURL: config.aimlApiBaseUrl,
+    apiKey: secret("AIML_API_KEY"),
+  });
+  return aiml.chat("gpt-4o-mini");
+}
 
 // ---- Tool: scanGmailForOffers -----------------------------------------------
 
@@ -122,18 +125,25 @@ export async function runGmailAgent(
     listWatchCart: tool(watchTools.listWatchCart),
   };
 
-  const result = await generateText({
-    model: aiml("gpt-4o-mini"),
-    system: GMAIL_SYSTEM_PROMPT,
-    tools: aiTools,
-    stopWhen: stepCountIs(8),
-    messages: [
-      ...history,
-      { role: "user" as const, content: prompt },
-    ],
-  });
+  let replyText = "";
+  try {
+    const result = await generateText({
+      model: getAimlModel(),
+      system: GMAIL_SYSTEM_PROMPT,
+      tools: aiTools,
+      stopWhen: stepCountIs(8),
+      messages: [
+        ...history,
+        { role: "user" as const, content: prompt },
+      ],
+    });
 
-  let replyText = result.text?.trim();
+    replyText = result.text?.trim() ?? "";
+  } catch (agentErr) {
+    console.error("[gmail] generateText failed:", agentErr);
+    replyText = "Sorry, I had a momentary issue scanning your offers. Please try again.";
+  }
+
   if (!replyText) {
     replyText = "Checked your email for offers. What would you like to track?";
   }

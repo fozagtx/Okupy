@@ -1,13 +1,16 @@
 import { generateText, tool, stepCountIs } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
-import { config } from "./config.js";
+import { config, secret } from "./config.js";
 import { createWatchToolsForUser } from "./watch-tools.js";
 import { threadStore } from "./threads.js";
 
-const aiml = createOpenAI({
-  baseURL: config.aimlApiBaseUrl,
-  apiKey: process.env.AIML_API_KEY,
-});
+function getAimlModel() {
+  const aiml = createOpenAI({
+    baseURL: config.aimlApiBaseUrl,
+    apiKey: secret("AIML_API_KEY"),
+  });
+  return aiml.chat("gpt-4o-mini");
+}
 
 const WATCH_SYSTEM_PROMPT = `You are Okupy, an iMessage-first shopping and price-drop concierge for Amazon and Jumia Ghana. You monitor product prices, find deals, and text users the moment a price drops or hits their target.
 
@@ -68,27 +71,34 @@ export async function runWatchAgent(userId: string, prompt: string): Promise<{ r
     checkWatchPrices: tool(watchTools.checkWatchPrices),
   };
 
-  const result = await generateText({
-    model: aiml("gpt-4o-mini"),
-    system: WATCH_SYSTEM_PROMPT,
-    tools: aiWatchTools,
-    stopWhen: stepCountIs(6),
-    messages: [
-      ...history,
-      { role: "user" as const, content: prompt },
-    ],
-  });
+  let replyText = "";
+  try {
+    const result = await generateText({
+      model: getAimlModel(),
+      system: WATCH_SYSTEM_PROMPT,
+      tools: aiWatchTools,
+      stopWhen: stepCountIs(6),
+      messages: [
+        ...history,
+        { role: "user" as const, content: prompt },
+      ],
+    });
 
-  let replyText = result.text?.trim();
-  if (!replyText) {
-    const toolResults = result.steps?.flatMap(s => s.toolResults ?? []) ?? [];
-    if (toolResults.length > 0) {
-      const last = toolResults[toolResults.length - 1] as unknown as { result?: { message?: string } };
-      if (last?.result && typeof last.result === "object" && typeof last.result.message === "string") {
-        replyText = last.result.message;
+    replyText = result.text?.trim() ?? "";
+    if (!replyText) {
+      const toolResults = result.steps?.flatMap(s => s.toolResults ?? []) ?? [];
+      if (toolResults.length > 0) {
+        const last = toolResults[toolResults.length - 1] as unknown as { result?: { message?: string } };
+        if (last?.result && typeof last.result === "object" && typeof last.result.message === "string") {
+          replyText = last.result.message;
+        }
       }
     }
+  } catch (agentErr) {
+    console.error("[watch] generateText failed:", agentErr);
+    replyText = "Sorry, I had a momentary issue processing that. Please try again.";
   }
+
   if (!replyText) {
     replyText = "Done. Let me know what you would like to track next.";
   }
