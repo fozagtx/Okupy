@@ -3,7 +3,7 @@ services:
     name: okupy-api
     runtime: node
     plan: starter
-    buildCommand: npm ci && npm run build && node scripts/patch-overrides.mjs && cd .mastra/output && rm -rf node_modules package-lock.json && npm install
+    buildCommand: npm ci && npm run build
     startCommand: npm start
     healthCheckPath: /health
     disk:

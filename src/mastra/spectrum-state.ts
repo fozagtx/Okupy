@@ -1,29 +1,25 @@
-import { Spectrum, text } from "spectrum-ts";
-import type { SpectrumInstance } from "spectrum-ts";
-
 export type SpectrumState = {
-  instance: SpectrumInstance | null;
+  send: ((userId: string, body: string) => Promise<void>) | null;
   ready: boolean;
 };
 
-export const spectrumState: SpectrumState = { instance: null, ready: false };
+export const spectrumState: SpectrumState = { send: null, ready: false };
 
-export function setSpectrum(spectrum: SpectrumInstance): void {
-  spectrumState.instance = spectrum;
+export function setSpectrumSender(send: SpectrumState["send"]): void {
+  spectrumState.send = send;
   spectrumState.ready = true;
 }
 
 export function clearSpectrum(): void {
-  spectrumState.instance = null;
+  spectrumState.send = null;
   spectrumState.ready = false;
 }
 
 export async function spectrumSend(userId: string, body: string): Promise<boolean> {
-  const spectrum = spectrumState.instance;
-  if (!spectrum || !spectrumState.ready) return false;
+  const send = spectrumState.send;
+  if (!send || !spectrumState.ready) return false;
   try {
-    const space = { id: userId, type: "dm" as const };
-    await spectrum.send(space as never, text(body));
+    await send(userId, body);
     return true;
   } catch (error) {
     console.error(`[spectrum] send failed for ${userId}`, error);

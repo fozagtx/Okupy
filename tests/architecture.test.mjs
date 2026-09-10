@@ -38,3 +38,17 @@ test("deployment uses a reproducible Node build", () => {
   assert.match(render, /buildCommand: npm ci && npm run build/);
   assert.match(render, /startCommand: npm start/);
 });
+
+test("iMessage uses the current split Spectrum cloud packages", () => {
+  const pkg = JSON.parse(read("package.json"));
+  const photon = read("src/mastra/photon.ts");
+  const spectrumState = read("src/mastra/spectrum-state.ts");
+
+  assert.ok(pkg.dependencies["@spectrum-ts/core"]);
+  assert.ok(pkg.dependencies["@spectrum-ts/imessage"]);
+  assert.equal(pkg.dependencies["spectrum-ts"], undefined);
+  assert.equal(pkg.overrides?.["@photon-ai/imessage-kit"], undefined);
+  assert.match(photon, /import\("@spectrum-ts\/core"\)/);
+  assert.match(photon, /import\("@spectrum-ts\/imessage"\)/);
+  assert.doesNotMatch(`${photon}\n${spectrumState}`, /from "spectrum-ts"|import\("spectrum-ts/);
+});
