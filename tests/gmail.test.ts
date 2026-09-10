@@ -12,11 +12,11 @@ test("looksLikeGmailRequest routes explicit Gmail/email offer requests", () => {
   assert.equal(looksLikeGmailRequest("look in my mail for amazon sales"), true);
   assert.equal(looksLikeGmailRequest("show my email offers"), true);
 
-  // Negative cases that should route to other agents or onboarding
-  assert.equal(looksLikeGmailRequest("Find an event with free pizza tonight"), false);
+  // Negative cases that should route to the watch agent
+  assert.equal(looksLikeGmailRequest("What is the weather in Accra today?"), false);
   assert.equal(looksLikeGmailRequest("https://www.amazon.com/dp/B09V3KXJPB"), false);
   assert.equal(looksLikeGmailRequest("track this jumia link https://www.jumia.com.gh/phone-123456.html"), false);
-  assert.equal(looksLikeGmailRequest("remind me in 2 hours to sleep"), false);
+  assert.equal(looksLikeGmailRequest("find mechanical keyboard on amazon"), false);
 });
 
 test("formatOffersForImessage returns concise iMessage-friendly listings", () => {

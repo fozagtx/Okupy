@@ -1,15 +1,13 @@
-import { runEventAgent } from "./event-agent.js";
 import { runWatchAgent } from "./watch-agent.js";
 import { runGmailAgent, looksLikeGmailRequest } from "./gmail-agent.js";
 import { isAmazonHost, isJumiaGhanaHost } from "./amazon.js";
 import { secret } from "./config.js";
-import { profileStore } from "./profiles.js";
 
 export type AgentReply = {
   userId: string;
   reply: string;
   needsOnboarding: boolean;
-  agent: "event" | "watch" | "gmail";
+  agent: "watch" | "gmail";
 };
 
 const HOST_TOKEN_PATTERN = /(?:https?:\/\/)?(?:[a-z0-9-]+\.)+[a-z]{2,}/gi;
@@ -57,22 +55,12 @@ export function looksLikeWatchRequest(message: string): boolean {
   return false;
 }
 
-const EVENT_EXPLICIT_PATTERN =
-  /\b(events?|meetups?|hackathons?|demo\s*day|free\s*food)\b/i;
-
-export function looksLikeEventRequest(message: string): boolean {
-  const value = (message ?? "").trim();
-  if (!value) return false;
-  if (looksLikeWatchRequest(value) || looksLikeGmailRequest(value)) return false;
-  return EVENT_EXPLICIT_PATTERN.test(value);
-}
-
 export async function respond(userId: string, message: string): Promise<AgentReply> {
   const normalizedUserId = userId.trim();
   if (!normalizedUserId) throw new Error("A user ID is required.");
 
   // Gmail offer-scan — checked first so "check my Gmail for Amazon offers" isn't
-  // hijacked by the watch-router (which would also match the word "amazon").
+  // hijacked by general product tracking.
   if (looksLikeGmailRequest(message)) {
     if (!secret("AIML_API_KEY")) {
       return {
@@ -86,35 +74,7 @@ export async function respond(userId: string, message: string): Promise<AgentRep
     return { userId: normalizedUserId, reply: result.reply, needsOnboarding: false, agent: "gmail" };
   }
 
-  // Explicit event scout requests (only if explicitly asked about events/meetups/free food)
-  if (looksLikeEventRequest(message)) {
-    if (!secret("FIRECRAWL_API_KEY")) {
-      return {
-        userId: normalizedUserId,
-        reply: "Add FIRECRAWL_API_KEY so I can search live events for you.",
-        needsOnboarding: false,
-        agent: "event",
-      };
-    }
-    if (!secret("AIML_API_KEY")) {
-      return {
-        userId: normalizedUserId,
-        reply: "Add AIML_API_KEY so I can coordinate live event discovery.",
-        needsOnboarding: false,
-        agent: "event",
-      };
-    }
-
-    const profile = await profileStore.getProfile(normalizedUserId);
-    const profileContext = profile ? `Builder profile: ${JSON.stringify(profile)}\n` : "";
-    const result = await runEventAgent(
-      normalizedUserId,
-      `${profileContext}Request: ${message.trim() || "Find me something worthwhile this week"}`,
-    );
-    return { userId: normalizedUserId, reply: result.reply, needsOnboarding: false, agent: "event" };
-  }
-
-  // DEFAULT AGENT: Watch / price tracking concierge (Amazon, Jumia Ghana, greetings, search, cart)
+  // DEFAULT AGENT: Watch / price tracking concierge (Amazon & Jumia Ghana)
   if (!secret("AIML_API_KEY")) {
     return {
       userId: normalizedUserId,

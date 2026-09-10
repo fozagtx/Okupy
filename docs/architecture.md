@@ -1,40 +1,28 @@
 # Okupy Architecture
 
-> Project name is **Okupy** (`okupy`, service `okupy-api`). `freeFood` below is
-> only an event signal (event offers free food) — not the project name.
+> Project name is **Okupy** (`okupy`, service `okupy-api`).
 
-Okupy is one TypeScript Node process over the Vercel AI SDK. Three iMessage-first
-agents share one inbound router, one Neon Postgres database, and one Spectrum
-iMessage transport.
+Okupy is a TypeScript Node service built on the Vercel AI SDK over Photon Spectrum. Two iMessage-first agents share one inbound router, one Neon Postgres database, and one Spectrum iMessage transport.
 
 ```mermaid
 flowchart LR
-  U[Builder] --> D[Dashboard]
+  U[User] --> D[Dashboard]
   U --> P[Photon Spectrum iMessage]
   D --> R[HTTP routes in src/server.ts]
   P --> RSP[respond router]
   R --> RSP
-  RSP --> E[Event agent: gpt-4o-mini + Event tools]
   RSP --> W[Watch agent: gpt-4o-mini + Watch tools]
   RSP --> G[Gmail agent: gpt-4o-mini + Composio scan]
-  E --> F1[Firecrawl search API]
-  W --> F2[Firecrawl search + extract APIs]
+  W --> F[Firecrawl search + extract APIs]
   G --> C[Composio Gmail API]
-  E <--> N[(Neon Postgres: profiles, drafts, reminders, threads)]
-  W <--> N2[(Neon Postgres: watched_items, price_history, watch_alerts)]
+  W <--> N[(Neon Postgres: watched_items, price_history, watch_alerts, threads)]
   G <--> N
   R --> C
-  E --> S[Scheduler: reminders every 30s]
   W --> WS[Scheduler: prices hourly, 24h per item]
-  S --> P
   WS --> P
 ```
 
-`runEventAgent`, `runWatchAgent`, and `runGmailAgent` use `generateText` with typed tools and
-`stepCountIs(6)`. Event discovery performs time-bounded Firecrawl searches and only
-keeps results with explicit food, networking, or builder-credit signals.
-Results retain source URLs, and replies remind users to verify event and RSVP
-details.
+`runWatchAgent` and `runGmailAgent` use `generateText` with typed tools and `stepCountIs(6)`.
 
 The watch agent tracks Jumia Ghana (`jumia.com.gh/...-<ID>.html`) plus Amazon.
 Users can paste a product URL directly or search by product name. Name searches
@@ -51,12 +39,10 @@ placeholder. Dedupe is per `(user_id, store, asin)`, so the same numeric id on
 Amazon and Jumia tracks independently. Jumia Ghana prices use GHS; Amazon items
 default to USD unless the scrape returns a code.
 
-The dashboard and Photon Spectrum call the same response boundary
-(`respond()`). New event senders complete a short persisted onboarding
-conversation before discovery, so restarts do not lose their progress.
+The dashboard and Photon Spectrum call the same response boundary (`respond()`).
 Conversation history lives in Neon `agent_threads` (30 messages per user,
-namespaced `watch:` for the watch agent) and is partitioned by stable channel
-identity.
+namespaced `watch:` for the watch agent, `gmail:` for the Gmail agent) and is
+partitioned by stable channel identity.
 
 Photon runs inside the same Node process. There is no sidecar server, Python
 worker, FastAPI service, Uvicorn process, slideshow/video pipeline, Daytona
@@ -68,6 +54,6 @@ environment (`AIML_API_KEY`, `FIRECRAWL_API_KEY`,
 `COMPOSIO_API_KEY`, `DATABASE_URL`, `SPECTRUM_*`, optional `PUBLIC_BASE_URL`,
 `WATCH_POLL_INTERVAL_MS`, `WATCH_BATCH_SIZE`). Gmail OAuth callbacks are built
 from allowlisted `PUBLIC_BASE_URL` (https only), never from a client `?host=`.
-Production deployments should additionally authenticate dashboard profile
+Production deployments should additionally authenticate dashboard
 access, normalize channel identities, encrypt persistent data, and provide
-profile deletion/export and retention controls.
+user data deletion/export and retention controls.

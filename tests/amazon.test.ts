@@ -18,7 +18,7 @@ import {
   storePolicy,
   unsupportedStoreMessage,
 } from "../src/agent/amazon.js";
-import { looksLikeAmazonRequest, looksLikeEventRequest, respond } from "../src/agent/respond.js";
+import { looksLikeAmazonRequest, respond } from "../src/agent/respond.js";
 import { formatMoney, nextCheckAt, WATCH_CHECK_INTERVAL_MS } from "../src/agent/watch-scheduler.js";
 import { createWatchToolsForUser } from "../src/agent/watch-tools.js";
 
@@ -76,7 +76,7 @@ test("comparePrices treats malformed strings as no-change", () => {
   assert.equal(result.changed, false);
 });
 
-test("looksLikeAmazonRequest routes watch intent without stealing event queries", () => {
+test("looksLikeAmazonRequest accurately identifies watch and price-tracking intent", () => {
   assert.equal(looksLikeAmazonRequest("https://www.amazon.com/dp/B09V3KXJPB"), true);
   assert.equal(looksLikeAmazonRequest("track https://amazon.co.uk/dp/B09V3KXJPB for me"), true);
   assert.equal(looksLikeAmazonRequest("https://www.amazon.com.evil.example/dp/B09V3KXJPB"), false);
@@ -91,18 +91,9 @@ test("looksLikeAmazonRequest routes watch intent without stealing event queries"
   assert.equal(looksLikeAmazonRequest("Find an iPhone 16 on Jumia and track it"), true);
   assert.equal(looksLikeAmazonRequest("Search Amazon for an MX Master 3S"), true);
   assert.equal(looksLikeAmazonRequest("Monitor the price of a Tecno Spark 50"), true);
-  assert.equal(looksLikeAmazonRequest("drop me events with free food tonight"), false);
-  assert.equal(looksLikeAmazonRequest("watch for meetups near me"), false);
-  assert.equal(looksLikeAmazonRequest("what's the price of pizza at the venue?"), false);
-});
-
-test("looksLikeEventRequest detects explicit event queries", () => {
-  assert.equal(looksLikeEventRequest("drop me events with free food tonight"), true);
-  assert.equal(looksLikeEventRequest("find meetups near me"), true);
-  assert.equal(looksLikeEventRequest("any hackathons this weekend?"), true);
-  assert.equal(looksLikeEventRequest("hello"), false);
-  assert.equal(looksLikeEventRequest("https://www.amazon.com/dp/B09V3KXJPB"), false);
-  assert.equal(looksLikeEventRequest("check my Gmail for deals"), false);
+  assert.equal(looksLikeAmazonRequest("tell me a funny bedtime story"), false);
+  assert.equal(looksLikeAmazonRequest("what is the weather in Tokyo?"), false);
+  assert.equal(looksLikeAmazonRequest("summarize quantum physics for me"), false);
 });
 
 test("respond routes general greetings to watch agent without onboarding", async () => {
@@ -118,10 +109,6 @@ test("respond routes general greetings to watch agent without onboarding", async
     const checkGmail = await respond("test-user-gmail", "check my Gmail for Amazon deals");
     assert.equal(checkGmail.agent, "gmail");
     assert.equal(checkGmail.needsOnboarding, false);
-
-    const checkEvent = await respond("test-user-event", "free food events this week");
-    assert.equal(checkEvent.agent, "event");
-    assert.equal(checkEvent.needsOnboarding, false);
   } finally {
     if (originalAimlKey !== undefined) process.env.AIML_API_KEY = originalAimlKey;
   }

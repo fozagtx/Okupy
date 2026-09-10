@@ -4,21 +4,13 @@ import { getDb, isDatabaseConfigured, runMigrations } from "./agent/db.js";
 import { dashboardHtml } from "./agent/dashboard.js";
 import { startPhoton, photonStatus } from "./agent/photon.js";
 import { spectrumState } from "./agent/spectrum-state.js";
-import { startScheduler } from "./agent/scheduler.js";
 import { startWatchScheduler } from "./agent/watch-scheduler.js";
 import { respond } from "./agent/respond.js";
-import { reminderStore } from "./agent/reminders.js";
 import { watchStore } from "./agent/watch-store.js";
 import { startGmailConnection, scanGmailOffers } from "./agent/composio.js";
 import { runWatchAgent } from "./agent/watch-agent.js";
 import { executeAddWatchItem, executeCheckWatchPrices } from "./agent/watch-tools.js";
-import { getProfile, saveProfile, builderProfileInputSchema } from "./agent/profiles.js";
 import { z } from "zod";
-
-const discoverSchema = z.object({
-  userId: z.string().trim().min(1).max(256),
-  message: z.string().trim().max(2_000).default("Find me something worthwhile this week"),
-});
 
 const connectionSchema = z.object({
   userId: z.string().trim().min(1).max(256),
@@ -51,7 +43,7 @@ const MAX_JSON_BODY_BYTES = 1_000_000;
 if (isDatabaseConfigured()) {
   await runMigrations();
 } else {
-  console.error("DATABASE_URL is not set — profiles and reminders will not persist across restarts.");
+  console.error("DATABASE_URL is not set — watch cart, price history, and alerts will not persist across restarts.");
 }
 
 async function readJson(request: IncomingMessage): Promise<unknown> {
@@ -136,57 +128,10 @@ const routes = [
       memory: "neon",
       database,
       channel: "photon-imessage",
-      agents: ["event", "watch", "gmail"],
+      agents: ["watch", "gmail"],
       photon,
       spectrum: spectrumState.ready,
     });
-  }),
-  route("GET", "/v1/profile/:userId", async (_req, res, params) => {
-    const profile = await getProfile(params.userId);
-    if (!profile) {
-      sendJson(res, 404, { error: "Profile not found." });
-      return;
-    }
-    sendJson(res, 200, profile);
-  }),
-  route("PUT", "/v1/profile/:userId", async (req, res, params) => {
-    let body: unknown;
-    try {
-      body = await readJson(req);
-    } catch (error) {
-      sendJson(res, 400, { error: error instanceof Error ? error.message : "Invalid JSON." });
-      return;
-    }
-    const result = builderProfileInputSchema.safeParse(body);
-    if (!result.success) {
-      sendJson(res, 400, { error: validationError(result) });
-      return;
-    }
-    if (result.data.userId !== params.userId) {
-      sendJson(res, 400, { error: "Path and profile user IDs must match." });
-      return;
-    }
-    sendJson(res, 200, await saveProfile(result.data));
-  }),
-  route("POST", "/v1/discover", async (req, res) => {
-    let body: unknown;
-    try {
-      body = await readJson(req);
-    } catch (error) {
-      sendJson(res, 400, { error: error instanceof Error ? error.message : "Invalid JSON." });
-      return;
-    }
-    const result = discoverSchema.safeParse(body);
-    if (!result.success) {
-      sendJson(res, 400, { error: validationError(result) });
-      return;
-    }
-    try {
-      sendJson(res, 200, await respond(result.data.userId, result.data.message));
-    } catch (error) {
-      console.error("Discover failed", error);
-      sendJson(res, 502, { error: "Event discovery is temporarily unavailable. Please try again." });
-    }
   }),
   route("POST", "/v1/connections", async (req, res) => {
     let body: unknown;
@@ -276,31 +221,6 @@ const routes = [
       console.error("Gmail agent failed", error);
       sendJson(res, 502, { error: "Gmail agent is temporarily unavailable." });
     }
-  }),
-  route("GET", "/v1/reminders/:userId", async (_req, res, params, query) => {
-    const includeFired = query.get("includeFired") === "true";
-    const reminders = includeFired
-      ? await reminderStore.listForUser(params.userId)
-      : await reminderStore.listActiveForUser(params.userId);
-    sendJson(res, 200, { reminders });
-  }),
-  route("DELETE", "/v1/reminders/:id", async (_req, res, params, query) => {
-    const userId = query.get("userId")?.trim();
-    if (!userId) {
-      sendJson(res, 400, { error: "userId query parameter is required." });
-      return;
-    }
-    const reminder = await reminderStore.cancel(params.id, userId);
-    if (!reminder) {
-      sendJson(res, 404, { error: "Reminder not found." });
-      return;
-    }
-    sendJson(res, 200, { reminder });
-  }),
-  route("GET", "/v1/reminders/:userId/history", async (_req, res, params, query) => {
-    const limitRaw = query.get("limit");
-    const limit = Math.max(1, Math.min(100, Number(limitRaw) || 20));
-    sendJson(res, 200, { history: await reminderStore.listHistory(params.userId, limit) });
   }),
   route("POST", "/v1/watch/:userId", async (req, res, params) => {
     let body: unknown;
@@ -515,7 +435,6 @@ server.listen(port, host, () => {
 });
 
 void startPhoton().catch(error => console.error("Photon startup failed", error));
-startScheduler();
 startWatchScheduler();
 
 export { server };

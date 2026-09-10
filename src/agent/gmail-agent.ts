@@ -96,7 +96,7 @@ Tracking selected offers:
 Not connected:
 - If scanGmailForOffers returns reason "not_connected", surface the redirectUrl (if any) and tell
   the user to open it to connect Gmail, then say "check my Gmail for offers" again.
-- If reason is "not_configured", tell the user to ask the builder to set COMPOSIO_API_KEY.
+- If reason is "not_configured", tell the user that COMPOSIO_API_KEY is not configured on the server.
 
 Voice: concise, plain, conversational. No markdown headers or tables — iMessage doesn't render them.`;
 
