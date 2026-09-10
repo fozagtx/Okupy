@@ -1,11 +1,6 @@
 # Okupy
 
-Okupy is a Photon-native iMessage shopping and price-tracking concierge powered by Photon Spectrum, the Vercel AI SDK, and Node.js.
-
-1. **Price Drop & Target Alerts**: Monitors Amazon and Jumia Ghana (`jumia.com.gh`) products. Users paste product links or search by name. An hourly background scheduler scrapes watched items every 24h via Firecrawl `/extract` and texts the user on iMessage the moment a price drops or reaches a user-defined target.
-2. **Gmail Deal Scanner**: Integrates with Gmail via Composio. When requested ("check my Gmail for deals"), scans promotional emails from Amazon and Jumia, surfaces structured offers with product links, and tracks chosen items on command.
-
-Built on **Photon Spectrum** for iMessage transport, Okupy orchestrates two concierge agents with the Vercel AI SDK and `gpt-4o-mini` via AIML API. Multi-turn conversation threads and watch carts persist in Neon Postgres.
+Photon-native iMessage shopping concierge for Amazon and Jumia Ghana price tracking and Gmail deal scanning.
 
 ---
 
