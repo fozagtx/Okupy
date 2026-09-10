@@ -1,18 +1,17 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { mkdir } from "node:fs/promises";
 import { config } from "./mastra/config.js";
-import { isDatabaseConfigured, runMigrations } from "./mastra/db.js";
+import { getDb, isDatabaseConfigured, runMigrations } from "./mastra/db.js";
 import { dashboardHtml } from "./mastra/dashboard.js";
 import { startPhoton, photonStatus } from "./mastra/photon.js";
 import { spectrumState } from "./mastra/spectrum-state.js";
 import { startScheduler } from "./mastra/scheduler.js";
-import { startWatchScheduler, runPriceTick } from "./mastra/watch-scheduler.js";
+import { startWatchScheduler } from "./mastra/watch-scheduler.js";
 import { respond } from "./mastra/respond.js";
 import { reminderStore } from "./mastra/reminders.js";
 import { watchStore } from "./mastra/watch-store.js";
 import { startGmailConnection } from "./mastra/composio.js";
 import { runWatchAgent } from "./mastra/watch-agent.js";
-import { executeAddWatchItem } from "./mastra/watch-tools.js";
+import { executeAddWatchItem, executeCheckWatchPrices } from "./mastra/watch-tools.js";
 import { getProfile, saveProfile, builderProfileInputSchema } from "./mastra/profiles.js";
 import { z } from "zod";
 
@@ -47,7 +46,7 @@ const watchUpdateTargetSchema = z.object({
   targetPrice: z.string().trim().regex(/^\d+(?:\.\d+)?$/).nullable(),
 });
 
-await mkdir(config.dataDirectory, { recursive: true });
+const MAX_JSON_BODY_BYTES = 1_000_000;
 
 if (isDatabaseConfigured()) {
   await runMigrations();
@@ -57,9 +56,17 @@ if (isDatabaseConfigured()) {
 
 async function readJson(request: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
+    let bytes = 0;
     let data = "";
     request.on("data", chunk => {
-      data += chunk;
+      const text = String(chunk);
+      bytes += Buffer.byteLength(text);
+      if (bytes > MAX_JSON_BODY_BYTES) {
+        reject(new Error("Request body too large."));
+        request.destroy();
+        return;
+      }
+      data += text;
     });
     request.on("end", () => {
       if (!data) return resolve(undefined);
@@ -116,7 +123,7 @@ const routes = [
     let database: "ready" | "error" | "unconfigured" = "unconfigured";
     if (isDatabaseConfigured()) {
       try {
-        await runMigrations();
+        await getDb().query("SELECT 1", []);
         database = "ready";
       } catch {
         database = "error";
@@ -135,7 +142,11 @@ const routes = [
     });
   }),
   route("GET", "/v1/profile/:userId", async (_req, res, params) => {
-    const profile = (await getProfile(params.userId)) ?? {};
+    const profile = await getProfile(params.userId);
+    if (!profile) {
+      sendJson(res, 404, { error: "Profile not found." });
+      return;
+    }
     sendJson(res, 200, profile);
   }),
   route("PUT", "/v1/profile/:userId", async (req, res, params) => {
@@ -177,7 +188,7 @@ const routes = [
       sendJson(res, 502, { error: "Event discovery is temporarily unavailable. Please try again." });
     }
   }),
-  route("POST", "/v1/connections", async (req, res, _params, query) => {
+  route("POST", "/v1/connections", async (req, res) => {
     let body: unknown;
     try {
       body = await readJson(req);
@@ -190,7 +201,11 @@ const routes = [
       sendJson(res, 400, { error: validationError(result) });
       return;
     }
-    const callbackUrl = `${query.get("host") ?? ""}/v1/connections/callback`;
+    if (!config.publicBaseUrl) {
+      sendJson(res, 200, await startGmailConnection(result.data.userId, ""));
+      return;
+    }
+    const callbackUrl = `${config.publicBaseUrl}/v1/connections/callback`;
     sendJson(res, 200, await startGmailConnection(result.data.userId, callbackUrl));
   }),
   route("GET", "/v1/connections/callback", async (_req, res, _params, query) => {
@@ -244,12 +259,18 @@ const routes = [
     }
     try {
       const added = await executeAddWatchItem(result.data);
-      const agent = await runWatchAgent(
-        result.data.userId,
-        `Just added ${added.item.title} at ${added.baselinePrice ?? "unknown price"} ${added.item.lastCurrency}. Confirm with the user.`,
-      );
+      let reply = added.message;
+      try {
+        const agent = await runWatchAgent(
+          result.data.userId,
+          `Just added ${added.item.title} at ${added.baselinePrice ?? "unknown price"} ${added.item.lastCurrency}. Confirm with the user.`,
+        );
+        reply = agent.reply;
+      } catch (error) {
+        console.warn("Watch confirmation unavailable, returning deterministic receipt", error);
+      }
       const cart = await watchStore.listForUser(result.data.userId);
-      sendJson(res, 200, { reply: agent.reply, cart, baselinePrice: added.baselinePrice });
+      sendJson(res, 200, { reply, cart, baselinePrice: added.baselinePrice });
     } catch (error) {
       console.error("Watch add failed", error);
       sendJson(res, 502, {
@@ -355,8 +376,8 @@ const routes = [
       sendJson(res, 400, { error: "Path and body user IDs must match." });
       return;
     }
-    const tick = await runPriceTick();
-    sendJson(res, 200, { ok: true, ...tick });
+    const checked = await executeCheckWatchPrices({ userId: result.data.userId });
+    sendJson(res, 200, { ok: true, ...checked });
   }),
   route("POST", "/v1/watch/agent/:userId", async (req, res, params) => {
     let body: unknown;

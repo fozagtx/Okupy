@@ -34,7 +34,8 @@ test("formatDropAlert falls back gracefully with missing target", () => {
     targetHit: false,
   });
   assert.match(message, /Price drop/);
-  assert.match(message, /€129\.90/);
-  assert.match(message, /€99\.00/);
+  // EUR is not a monitored store currency — falls back to "<amount> <CODE>".
+  assert.match(message, /129\.90 EUR/);
+  assert.match(message, /99\.00 EUR/);
   assert.doesNotMatch(message, /TARGET HIT/);
 });

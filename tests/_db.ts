@@ -71,6 +71,7 @@ export async function resetSchema(sql: NeonQueryFunction<false, false>): Promise
     `CREATE TABLE IF NOT EXISTS watched_items (
       id UUID PRIMARY KEY,
       user_id TEXT NOT NULL,
+      store TEXT NOT NULL DEFAULT 'amazon',
       asin TEXT NOT NULL,
       url TEXT NOT NULL,
       title TEXT NOT NULL,
@@ -85,7 +86,7 @@ export async function resetSchema(sql: NeonQueryFunction<false, false>): Promise
       status TEXT NOT NULL DEFAULT 'active',
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      UNIQUE (user_id, asin)
+      UNIQUE (user_id, store, asin)
     )`,
     `CREATE TABLE IF NOT EXISTS price_history (
       id UUID PRIMARY KEY,
@@ -103,6 +104,7 @@ export async function resetSchema(sql: NeonQueryFunction<false, false>): Promise
       old_price TEXT,
       new_price TEXT,
       target_price TEXT,
+      currency TEXT NOT NULL DEFAULT 'USD',
       delivered_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       channel TEXT NOT NULL DEFAULT 'imessage',
       reply_text TEXT NOT NULL

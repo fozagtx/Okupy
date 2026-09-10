@@ -1,5 +1,6 @@
 import { runEventAgent } from "./event-agent.js";
 import { runWatchAgent } from "./watch-agent.js";
+import { isAmazonHost, isJumiaGhanaHost } from "./amazon.js";
 import { secret } from "./config.js";
 import { profileStore } from "./profiles.js";
 
@@ -10,15 +11,44 @@ export type AgentReply = {
   agent: "event" | "watch";
 };
 
-const AMAZON_KEYWORDS =
-  /\b(amazon|amzn|prime|\bprice\b|\bcart\b|\bdrop\b|\bdrops\b|\bdiscount\b|\bwatch(ing)?\b|\bdeal\b|\bsale\b|\bbargain\b|\bASIN\b|\bdp\/|\bgp\/product\b|notify me|alert me|under \$|below \$|less than \$|target price|wishlist|under \d|\bbuy box\b|\blink\b)/i;
+const HOST_TOKEN_PATTERN = /(?:https?:\/\/)?(?:[a-z0-9-]+\.)+[a-z]{2,}/gi;
+const AMAZON_PATH_PATTERN = /\/(?:dp|gp\/product)\b/i;
+const AMAZON_EXPLICIT_PATTERN =
+  /\b(amazon|amzn|asin|buy box|target price|price track|price alert|price drop|under \$|below \$|less than \$|notify me|alert me|add .*to .*watch|watchlist|wish ?list)\b/i;
 
 export function looksLikeAmazonRequest(message: string): boolean {
-  const value = message.toLowerCase();
+  return looksLikeWatchRequest(message);
+}
+
+/** Store-aware router: Amazon or Jumia product links, SKUs/ASINs, or price-tracking intent. */
+export function looksLikeWatchRequest(message: string): boolean {
+  const value = (message ?? "").trim();
   if (!value) return false;
-  if (/(?:https?:\/\/)?(?:www\.)?(?:amazon\.|amzn\.)/.test(value)) return true;
-  if (value.includes("dp/") || value.includes("/gp/product")) return true;
-  if (AMAZON_KEYWORDS.test(value)) return true;
+  let hasStoreLookalike = false;
+  for (const token of value.match(HOST_TOKEN_PATTERN) ?? []) {
+    try {
+      const hostname = new URL(token.startsWith("http") ? token : `https://${token}`).hostname;
+      if (isAmazonHost(hostname) || isJumiaGhanaHost(hostname)) return true;
+      if (hostname.includes("amazon") || hostname.includes("amzn") || hostname.includes("jumia")) {
+        hasStoreLookalike = true;
+      }
+    } catch {
+      // Ignore malformed host-like tokens and continue with intent classification.
+    }
+  }
+  if (hasStoreLookalike) return false;
+  if (AMAZON_PATH_PATTERN.test(value)) return true;
+  // Jumia Ghana product links always end in -<ID>.html
+  if (/-[A-Za-z0-9]{6,}\.html?\b/i.test(value) && /jumia\.com\.gh/i.test(value)) return true;
+  if (/\bASIN\b/.test(value)) return true;
+  if (/\bSKU\b/.test(value) && /jumia\.com\.gh/i.test(value)) return true;
+  // Standalone watch-list vocabulary is unambiguous even without the word "Amazon".
+  if (/\b(watchlist|wish ?list|target price|price drop|price alert|price track)\b/i.test(value)) return true;
+  // Explicit price-tracking intent always counts, even without the word "Amazon".
+  if (/(alert|notify|ping|text)\s+me\s+(when|if|at|under|below)/i.test(value) && /\$\s?\d|under|below|target|price/i.test(value)) return true;
+  if (/amazon|amzn/i.test(value) && AMAZON_EXPLICIT_PATTERN.test(value)) return true;
+  if (/amazon|amzn/i.test(value) && /(price|deal|discount|sale|cart|link|url)/i.test(value)) return true;
+  if (/jumia\.com\.gh/i.test(value) && /(price|deal|discount|sale|cart|link|url|track|watch|alert|notify|target|drop)/i.test(value)) return true;
   return false;
 }
 

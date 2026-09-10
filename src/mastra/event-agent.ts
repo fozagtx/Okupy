@@ -1,10 +1,11 @@
 import { generateText, tool, stepCountIs } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
+import { config } from "./config.js";
 import { eventTools } from "./tools.js";
 import { threadStore } from "./threads.js";
 
 const aiml = createOpenAI({
-  baseURL: "https://api.aimlapi.com/v1",
+  baseURL: config.aimlApiBaseUrl,
   apiKey: process.env.AIML_API_KEY,
 });
 

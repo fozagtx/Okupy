@@ -6,7 +6,8 @@ import { getDb } from "./db.js";
 export const watchItemInputSchema = z.object({
   userId: z.string().trim().min(1).max(256),
   url: z.url(),
-  asin: z.string().trim().regex(/^[A-Z0-9]{10}$/i),
+  store: z.enum(["amazon", "jumia"]).default("amazon"),
+  asin: z.string().trim().min(4).max(64),
   title: z.string().trim().min(1).max(500),
   imageUrl: z.url().nullable().optional(),
   targetPrice: z.string().trim().regex(/^\d+(?:\.\d+)?$/).nullable().optional(),
@@ -20,6 +21,7 @@ export type WatchItemStatus = "active" | "paused" | "removed";
 export type WatchItem = {
   id: string;
   userId: string;
+  store: "amazon" | "jumia";
   asin: string;
   url: string;
   title: string;
@@ -53,6 +55,7 @@ export type WatchAlert = {
   oldPrice: string | null;
   newPrice: string | null;
   targetPrice: string | null;
+  currency: string;
   deliveredAt: string;
   channel: string;
   replyText: string;
@@ -62,6 +65,7 @@ function rowToItem(row: Record<string, unknown>): WatchItem {
   return {
     id: row.id as string,
     userId: row.user_id as string,
+    store: ((row.store as string | null) ?? "amazon") as WatchItem["store"],
     asin: row.asin as string,
     url: row.url as string,
     title: row.title as string,
@@ -86,11 +90,11 @@ export class WatchStore {
     const parsed = watchItemInputSchema.parse(input);
     const id = randomUUID();
     const rows = await this.sql`
-      INSERT INTO watched_items (id, user_id, asin, url, title, image_url, target_price, initial_price, last_currency, status)
-      VALUES (${id}::uuid, ${parsed.userId}, ${parsed.asin}, ${parsed.url}, ${parsed.title},
+      INSERT INTO watched_items (id, user_id, store, asin, url, title, image_url, target_price, initial_price, last_currency, status)
+      VALUES (${id}::uuid, ${parsed.userId}, ${parsed.store}, ${parsed.asin}, ${parsed.url}, ${parsed.title},
               ${parsed.imageUrl ?? null}, ${parsed.targetPrice ?? null}, ${parsed.initialPrice ?? null},
               ${parsed.currency}, 'active')
-      ON CONFLICT (user_id, asin) DO UPDATE SET
+      ON CONFLICT (user_id, store, asin) DO UPDATE SET
         url = EXCLUDED.url,
         title = EXCLUDED.title,
         image_url = EXCLUDED.image_url,
@@ -99,7 +103,7 @@ export class WatchStore {
         last_currency = EXCLUDED.last_currency,
         status = 'active',
         updated_at = now()
-      RETURNING id, user_id, asin, url, title, image_url, target_price, initial_price,
+      RETURNING id, user_id, store, asin, url, title, image_url, target_price, initial_price,
                 last_price, last_currency, last_checked_at, last_alerted_price, last_alerted_at,
                 status, created_at, updated_at
     `;
@@ -107,40 +111,56 @@ export class WatchStore {
   }
 
   async remove(id: string, userId: string): Promise<WatchItem | null> {
-    await this.sql`
+    const rows = await this.sql`
       UPDATE watched_items SET status = 'removed', updated_at = now()
       WHERE id = ${id}::uuid AND user_id = ${userId} AND status <> 'removed'
+      RETURNING id, user_id, store, asin, url, title, image_url, target_price, initial_price,
+                last_price, last_currency, last_checked_at, last_alerted_price, last_alerted_at,
+                status, created_at, updated_at
     `;
-    return this.get(id, userId);
+    const row = (rows as Record<string, unknown>[])[0];
+    return row ? rowToItem(row) : null;
   }
 
   async pause(id: string, userId: string): Promise<WatchItem | null> {
-    await this.sql`
+    const rows = await this.sql`
       UPDATE watched_items SET status = 'paused', updated_at = now()
-      WHERE id = ${id}::uuid AND user_id = ${userId}
+      WHERE id = ${id}::uuid AND user_id = ${userId} AND status = 'active'
+      RETURNING id, user_id, store, asin, url, title, image_url, target_price, initial_price,
+                last_price, last_currency, last_checked_at, last_alerted_price, last_alerted_at,
+                status, created_at, updated_at
     `;
-    return this.get(id, userId);
+    const row = (rows as Record<string, unknown>[])[0];
+    return row ? rowToItem(row) : null;
   }
 
   async resume(id: string, userId: string): Promise<WatchItem | null> {
-    await this.sql`
+    const rows = await this.sql`
       UPDATE watched_items SET status = 'active', updated_at = now()
-      WHERE id = ${id}::uuid AND user_id = ${userId}
+      WHERE id = ${id}::uuid AND user_id = ${userId} AND status = 'paused'
+      RETURNING id, user_id, store, asin, url, title, image_url, target_price, initial_price,
+                last_price, last_currency, last_checked_at, last_alerted_price, last_alerted_at,
+                status, created_at, updated_at
     `;
-    return this.get(id, userId);
+    const row = (rows as Record<string, unknown>[])[0];
+    return row ? rowToItem(row) : null;
   }
 
   async updateTarget(id: string, userId: string, targetPrice: string | null): Promise<WatchItem | null> {
-    await this.sql`
+    const rows = await this.sql`
       UPDATE watched_items SET target_price = ${targetPrice}, updated_at = now()
-      WHERE id = ${id}::uuid AND user_id = ${userId}
+      WHERE id = ${id}::uuid AND user_id = ${userId} AND status <> 'removed'
+      RETURNING id, user_id, store, asin, url, title, image_url, target_price, initial_price,
+                last_price, last_currency, last_checked_at, last_alerted_price, last_alerted_at,
+                status, created_at, updated_at
     `;
-    return this.get(id, userId);
+    const row = (rows as Record<string, unknown>[])[0];
+    return row ? rowToItem(row) : null;
   }
 
   async get(id: string, userId: string): Promise<WatchItem | null> {
     const rows = await this.sql`
-      SELECT id, user_id, asin, url, title, image_url, target_price, initial_price,
+      SELECT id, user_id, store, asin, url, title, image_url, target_price, initial_price,
              last_price, last_currency, last_checked_at, last_alerted_price, last_alerted_at,
              status, created_at, updated_at
       FROM watched_items
@@ -151,15 +171,24 @@ export class WatchStore {
     return row ? rowToItem(row) : null;
   }
 
-  async getByAsin(userId: string, asin: string): Promise<WatchItem | null> {
-    const rows = await this.sql`
-      SELECT id, user_id, asin, url, title, image_url, target_price, initial_price,
-             last_price, last_currency, last_checked_at, last_alerted_price, last_alerted_at,
-             status, created_at, updated_at
-      FROM watched_items
-      WHERE user_id = ${userId} AND asin = ${asin} AND status <> 'removed'
-      LIMIT 1
-    `;
+  async getByAsin(userId: string, asin: string, store?: WatchItem["store"]): Promise<WatchItem | null> {
+    const rows = store
+      ? await this.sql`
+        SELECT id, user_id, store, asin, url, title, image_url, target_price, initial_price,
+               last_price, last_currency, last_checked_at, last_alerted_price, last_alerted_at,
+               status, created_at, updated_at
+        FROM watched_items
+        WHERE user_id = ${userId} AND store = ${store} AND asin = ${asin} AND status <> 'removed'
+        LIMIT 1
+      `
+      : await this.sql`
+        SELECT id, user_id, store, asin, url, title, image_url, target_price, initial_price,
+               last_price, last_currency, last_checked_at, last_alerted_price, last_alerted_at,
+               status, created_at, updated_at
+        FROM watched_items
+        WHERE user_id = ${userId} AND asin = ${asin} AND status <> 'removed'
+        LIMIT 1
+      `;
     const row = (rows as Record<string, unknown>[])[0];
     return row ? rowToItem(row) : null;
   }
@@ -167,7 +196,7 @@ export class WatchStore {
   async listForUser(userId: string, includeRemoved = false): Promise<WatchItem[]> {
     const rows = includeRemoved
       ? await this.sql`
-          SELECT id, user_id, asin, url, title, image_url, target_price, initial_price,
+          SELECT id, user_id, store, asin, url, title, image_url, target_price, initial_price,
                  last_price, last_currency, last_checked_at, last_alerted_price, last_alerted_at,
                  status, created_at, updated_at
           FROM watched_items
@@ -175,7 +204,7 @@ export class WatchStore {
           ORDER BY status = 'removed' ASC, updated_at DESC
         `
       : await this.sql`
-          SELECT id, user_id, asin, url, title, image_url, target_price, initial_price,
+          SELECT id, user_id, store, asin, url, title, image_url, target_price, initial_price,
                  last_price, last_currency, last_checked_at, last_alerted_price, last_alerted_at,
                  status, created_at, updated_at
           FROM watched_items
@@ -187,7 +216,7 @@ export class WatchStore {
 
   async listActiveForCheck(limit = 25): Promise<WatchItem[]> {
     const rows = await this.sql`
-      SELECT id, user_id, asin, url, title, image_url, target_price, initial_price,
+      SELECT id, user_id, store, asin, url, title, image_url, target_price, initial_price,
              last_price, last_currency, last_checked_at, last_alerted_price, last_alerted_at,
              status, created_at, updated_at
       FROM watched_items
@@ -199,6 +228,16 @@ export class WatchStore {
   }
 
   async recordPrice(itemId: string, userId: string, price: string, currency: string, checkedAt: Date): Promise<void> {
+    if (!/^\d+(?:\.\d+)?$/.test(price)) {
+      // Never persist placeholder prices: keep the last known price and only bump the check time.
+      await this.sql`
+        UPDATE watched_items
+        SET last_checked_at = ${checkedAt.toISOString()}::timestamptz,
+            updated_at = now()
+        WHERE id = ${itemId}::uuid AND user_id = ${userId}
+      `;
+      return;
+    }
     const historyId = randomUUID();
     await this.sql`
       INSERT INTO price_history (id, item_id, user_id, price, currency, observed_at)
@@ -210,6 +249,15 @@ export class WatchStore {
           last_currency = ${currency},
           last_checked_at = ${checkedAt.toISOString()}::timestamptz,
           initial_price = COALESCE(initial_price, ${price}),
+          updated_at = now()
+      WHERE id = ${itemId}::uuid AND user_id = ${userId}
+    `;
+  }
+
+  async recordCheck(itemId: string, userId: string, checkedAt: Date): Promise<void> {
+    await this.sql`
+      UPDATE watched_items
+      SET last_checked_at = ${checkedAt.toISOString()}::timestamptz,
           updated_at = now()
       WHERE id = ${itemId}::uuid AND user_id = ${userId}
     `;
@@ -229,11 +277,11 @@ export class WatchStore {
     const id = randomUUID();
     const deliveredAt = alert.deliveredAt ?? new Date();
     const rows = await this.sql`
-      INSERT INTO watch_alerts (id, item_id, user_id, alert_kind, old_price, new_price, target_price, delivered_at, channel, reply_text)
+      INSERT INTO watch_alerts (id, item_id, user_id, alert_kind, old_price, new_price, target_price, currency, delivered_at, channel, reply_text)
       VALUES (${id}::uuid, ${alert.itemId}::uuid, ${alert.userId}, ${alert.alertKind},
               ${alert.oldPrice ?? null}, ${alert.newPrice ?? null}, ${alert.targetPrice ?? null},
-              ${deliveredAt.toISOString()}::timestamptz, ${alert.channel}, ${alert.replyText})
-      RETURNING id, item_id, user_id, alert_kind, old_price, new_price, target_price, delivered_at, channel, reply_text
+              ${alert.currency}, ${deliveredAt.toISOString()}::timestamptz, ${alert.channel}, ${alert.replyText})
+      RETURNING id, item_id, user_id, alert_kind, old_price, new_price, target_price, currency, delivered_at, channel, reply_text
     `;
     const row = (rows as Record<string, unknown>[])[0];
     return {
@@ -244,6 +292,7 @@ export class WatchStore {
       oldPrice: (row.old_price as string | null) ?? null,
       newPrice: (row.new_price as string | null) ?? null,
       targetPrice: (row.target_price as string | null) ?? null,
+      currency: (row.currency as string | null) ?? "USD",
       deliveredAt: new Date(row.delivered_at as string).toISOString(),
       channel: row.channel as string,
       replyText: row.reply_text as string,
@@ -252,7 +301,7 @@ export class WatchStore {
 
   async listAlerts(userId: string, limit = 25): Promise<WatchAlert[]> {
     const rows = await this.sql`
-      SELECT id, item_id, user_id, alert_kind, old_price, new_price, target_price, delivered_at, channel, reply_text
+      SELECT id, item_id, user_id, alert_kind, old_price, new_price, target_price, currency, delivered_at, channel, reply_text
       FROM watch_alerts
       WHERE user_id = ${userId}
       ORDER BY delivered_at DESC
@@ -266,6 +315,7 @@ export class WatchStore {
       oldPrice: (row.old_price as string | null) ?? null,
       newPrice: (row.new_price as string | null) ?? null,
       targetPrice: (row.target_price as string | null) ?? null,
+      currency: (row.currency as string | null) ?? "USD",
       deliveredAt: new Date(row.delivered_at as string).toISOString(),
       channel: row.channel as string,
       replyText: row.reply_text as string,

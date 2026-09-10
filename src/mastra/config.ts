@@ -1,17 +1,12 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
-
 /** Public service locations live here. Only credentials belong in the environment. */
-const dataDirectory = existsSync("/var/data") ? "/var/data" : join(process.cwd(), "data");
-
 export const config = {
   exaSearchUrl: "https://api.exa.ai/search",
   composioApiUrl: "https://backend.composio.dev",
-  dataDirectory,
-  profileFile: join(dataDirectory, "profiles.json"),
-  memoryDatabaseUrl: `file:${join(dataDirectory, "mastra.db")}`,
+  firecrawlExtractUrl: "https://api.firecrawl.dev/v2/extract",
+  aimlApiBaseUrl: "https://api.aimlapi.com/v1",
   searchWindowDays: 45,
   maxResults: 8,
+  publicBaseUrl: (process.env.PUBLIC_BASE_URL ?? "").trim().replace(/\/+$/, ""),
 } as const;
 
 export function secret(name: string): string {

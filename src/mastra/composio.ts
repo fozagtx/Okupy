@@ -18,6 +18,14 @@ export async function startGmailConnection(userId: string, callbackUrl: string):
       note: "COMPOSIO_API_KEY is not set. Add it to connect Gmail.",
     };
   }
+  if (!callbackUrl || !/^https:\/\//.test(callbackUrl)) {
+    return {
+      app: "gmail",
+      redirectUrl: "",
+      status: "not_configured",
+      note: "Set PUBLIC_BASE_URL to an https:// URL so Gmail can redirect back to Okupy.",
+    };
+  }
 
   try {
     const composio = new Composio({ apiKey, baseURL: config.composioApiUrl });

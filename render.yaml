@@ -6,10 +6,6 @@ services:
     buildCommand: npm ci && npm run build
     startCommand: npm start
     healthCheckPath: /health
-    disk:
-      name: okupy-memory
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: AIML_API_KEY
         sync: false
@@ -20,6 +16,8 @@ services:
       - key: COMPOSIO_API_KEY
         sync: false
       - key: DATABASE_URL
+        sync: false
+      - key: PUBLIC_BASE_URL
         sync: false
       - key: SPECTRUM_PROJECT_ID
         sync: false

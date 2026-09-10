@@ -1,9 +1,16 @@
 import { z } from "zod";
-import { fetchAmazonPage, canonicalAmazonUrl, extractAsinFromUrl, comparePrices } from "./amazon.js";
+import {
+  fetchProductPage,
+  canonicalProductUrl,
+  comparePrices,
+  isStoreEnabled,
+  unsupportedStoreMessage,
+} from "./amazon.js";
 import { watchStore } from "./watch-store.js";
 
 const watchItemSchema = z.object({
   id: z.string(),
+  store: z.enum(["amazon", "jumia"]),
   asin: z.string(),
   url: z.url(),
   title: z.string(),
@@ -18,6 +25,7 @@ const watchItemSchema = z.object({
 
 function serializeItem(item: {
   id: string;
+  store: "amazon" | "jumia";
   asin: string;
   url: string;
   title: string;
@@ -31,6 +39,7 @@ function serializeItem(item: {
 }) {
   return {
     id: item.id,
+    store: item.store,
     asin: item.asin,
     url: item.url,
     title: item.title,
@@ -46,7 +55,13 @@ function serializeItem(item: {
 
 const addItemParameters = z.object({
   userId: z.string().trim().min(1).max(256),
-  url: z.string().trim().url().describe("Full Amazon product URL — must be amazon.com/dp/<ASIN> or similar"),
+  url: z
+    .string()
+    .trim()
+    .url()
+    .describe(
+      "Full Amazon (amazon.com/dp/<ASIN>) or Jumia (jumia.*/<slug>-<ID>.html) product URL",
+    ),
   targetPrice: z
     .string()
     .trim()
@@ -58,12 +73,25 @@ const addItemParameters = z.object({
 });
 
 export async function executeAddWatchItem(input: z.input<typeof addItemParameters>) {
-  const canonical = canonicalAmazonUrl(input.url);
-  if (!canonical) throw new Error("That doesn't look like an Amazon product URL. Send a link like https://www.amazon.com/dp/<ASIN>.");
-  const asin = extractAsinFromUrl(canonical);
-  if (!asin) throw new Error("Couldn't extract an ASIN from that URL. Double-check the Amazon link.");
+  const blocked = unsupportedStoreMessage(input.url);
+  if (blocked) throw new Error(blocked);
+  const resolved = canonicalProductUrl(input.url);
+  if (!resolved) {
+    throw new Error(
+      "That doesn't look like a monitored product URL. I track Jumia Ghana (jumia.com.gh/...-<ID>.html) and Amazon.",
+    );
+  }
+  const { store, productId: asin, url: canonical } = resolved;
+  if (!isStoreEnabled(store)) {
+    throw new Error(
+      store === "amazon"
+        ? "Amazon tracking is paused — I only track Jumia Ghana right now."
+        : "Jumia Ghana tracking is paused right now.",
+    );
+  }
+  const storeLabel = store === "amazon" ? "Amazon" : "Jumia Ghana";
 
-  const existing = await watchStore.getByAsin(input.userId, asin);
+  const existing = await watchStore.getByAsin(input.userId, asin, store);
   if (existing) {
     const updatedTarget =
       input.targetPrice !== undefined && input.targetPrice !== null
@@ -76,14 +104,14 @@ export async function executeAddWatchItem(input: z.input<typeof addItemParameter
     };
   }
 
-  let title = "Amazon item";
+  let title = `${storeLabel} item`;
   let imageUrl: string | null = null;
   let baselinePrice: string | null = null;
-  let currency = "USD";
+  let currency = store === "jumia" ? "GHS" : "USD";
 
   if (input.fetchNow) {
     try {
-      const fetched = await fetchAmazonPage(canonical);
+      const fetched = await fetchProductPage(canonical, store);
       title = fetched.title || title;
       imageUrl = fetched.imageUrl;
       baselinePrice = fetched.price;
@@ -99,6 +127,7 @@ export async function executeAddWatchItem(input: z.input<typeof addItemParameter
   const saved = await watchStore.add({
     userId: input.userId,
     url: canonical,
+    store,
     asin,
     title,
     imageUrl,
@@ -227,9 +256,14 @@ export async function executeCheckWatchPrices(input: z.input<typeof checkPricesP
   for (const item of items) {
     if (item.status !== "active") continue;
     try {
-      const fetched = await fetchAmazonPage(item.url);
+      const fetched = await fetchProductPage(item.url, item.store);
       const previous = item.lastPrice;
-      await watchStore.recordPrice(item.id, input.userId, fetched.price ?? "0", fetched.currency, new Date());
+      if (fetched.price) {
+        await watchStore.recordPrice(item.id, input.userId, fetched.price, fetched.currency, new Date());
+      } else {
+        await watchStore.recordCheck(item.id, input.userId, new Date());
+        failures.push({ id: item.id, title: item.title, reason: "Price unavailable on this check." });
+      }
       checked.push(item);
       if (fetched.price && previous && Number(fetched.price) < Number(previous)) {
         const comparison = comparePrices(previous, fetched.price, fetched.currency, item.targetPrice);
@@ -259,7 +293,7 @@ export async function executeCheckWatchPrices(input: z.input<typeof checkPricesP
 export const watchTools = {
   addWatchItem: {
     description:
-      "Add an Amazon product URL to the user's monitored cart. Optionally takes a target threshold; alerts fire when the price drops at or below it.",
+      "Add an Amazon or Jumia product URL to the user's monitored cart. Optionally takes a target threshold; alerts fire when the price drops at or below it.",
     inputSchema: addItemParameters,
     execute: executeAddWatchItem,
   },
@@ -285,7 +319,7 @@ export const watchTools = {
   },
   listWatchCart: {
     description:
-      "List every Amazon item the user is currently watching, with current and target prices. Use when the user asks 'what's on my watch list', 'show my cart', 'what am I watching', or 'show prices'.",
+      "List every Amazon and Jumia item the user is currently watching, with current and target prices. Use when the user asks 'what's on my watch list', 'show my cart', 'what am I watching', or 'show prices'.",
     inputSchema: listCartParameters,
     execute: executeListWatchCart,
   },

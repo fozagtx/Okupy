@@ -5,6 +5,7 @@ import { needsDatabase, withDb } from "./_db.js";
 
 const SAMPLE = {
   userId: "watcher-1",
+  store: "amazon" as const,
   url: "https://www.amazon.com/dp/B09V3KXJPB",
   asin: "B09V3KXJPB",
   title: "Logitech MX Master 3S",
@@ -12,6 +13,18 @@ const SAMPLE = {
   targetPrice: "120.00",
   initialPrice: "199.99",
   currency: "USD",
+};
+
+const JUMIA_SAMPLE = {
+  userId: "watcher-1",
+  store: "jumia" as const,
+  url: "https://www.jumia.com.gh/tecno-spark-50-128gb-300723006.html",
+  asin: "300723006",
+  title: "TECNO Spark 50",
+  imageUrl: null,
+  targetPrice: "2000.00",
+  initialPrice: "2300.00",
+  currency: "GHS",
 };
 
 withDb("watch store adds items, records price history, and removes them", async sql => {
@@ -30,6 +43,9 @@ withDb("watch store adds items, records price history, and removes them", async 
 
   const removed = await store.remove(item.id, item.userId);
   assert.equal(removed?.status, "removed");
+  assert.equal(await store.remove(item.id, item.userId), null);
+  assert.equal(await store.pause(item.id, item.userId), null);
+  assert.equal(await store.updateTarget(item.id, item.userId, "100.00"), null);
   const active = await store.listForUser(item.userId);
   assert.equal(active.length, 0);
   const withRemoved = await store.listForUser(item.userId, true);
@@ -49,12 +65,25 @@ withDb("watch store deduplicates by ASIN per user", async sql => {
 withDb("watch store isolates users", async sql => {
   const store = new WatchStore(sql);
   await store.add(SAMPLE);
-  const item = (await store.getByAsin(SAMPLE.userId, SAMPLE.asin))!;
+  const item = (await store.getByAsin(SAMPLE.userId, SAMPLE.asin, "amazon"))!;
   const stolen = await store.remove(item.id, "intruder");
   assert.equal(stolen, null);
   const remaining = await store.listForUser(SAMPLE.userId);
   assert.equal(remaining.length, 1);
   assert.equal(remaining[0].status, "active");
+});
+
+withDb("watch store tracks amazon and jumia with the same product id independently", async sql => {
+  const store = new WatchStore(sql);
+  const amazon = await store.add(SAMPLE);
+  const jumia = await store.add(JUMIA_SAMPLE);
+  assert.notEqual(amazon.id, jumia.id);
+  assert.equal(jumia.store, "jumia");
+  assert.equal(jumia.lastCurrency, "GHS");
+  assert.equal((await store.listForUser(SAMPLE.userId)).length, 2);
+  const again = await store.add({ ...JUMIA_SAMPLE, title: "TECNO Spark 50 updated" });
+  assert.equal(again.id, jumia.id);
+  assert.equal(again.title, "TECNO Spark 50 updated");
 });
 
 withDb("watch store lists active due items oldest first", async sql => {
@@ -80,6 +109,7 @@ withDb("watch store records alerts and lists them per user", async sql => {
     oldPrice: "199.99",
     newPrice: "149.99",
     targetPrice: null,
+    currency: "USD",
     channel: "imessage",
     replyText: "Price drop: $199.99 → $149.99",
   });
@@ -87,6 +117,7 @@ withDb("watch store records alerts and lists them per user", async sql => {
   assert.equal(alerts.length, 1);
   assert.equal(alerts[0].alertKind, "price_drop");
   assert.equal(alerts[0].newPrice, "149.99");
+  assert.equal(alerts[0].currency, "USD");
 });
 
 void needsDatabase;

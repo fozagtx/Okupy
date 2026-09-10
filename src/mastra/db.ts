@@ -61,6 +61,7 @@ const SCHEMA_STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS watched_items (
     id UUID PRIMARY KEY,
     user_id TEXT NOT NULL,
+    store TEXT NOT NULL DEFAULT 'amazon',
     asin TEXT NOT NULL,
     url TEXT NOT NULL,
     title TEXT NOT NULL,
@@ -75,8 +76,19 @@ const SCHEMA_STATEMENTS: string[] = [
     status TEXT NOT NULL DEFAULT 'active',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (user_id, asin)
+    UNIQUE (user_id, store, asin)
   )`,
+  `ALTER TABLE watched_items ADD COLUMN IF NOT EXISTS store TEXT NOT NULL DEFAULT 'amazon'`,
+  `DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'watched_items_user_id_asin_key') THEN
+      ALTER TABLE watched_items DROP CONSTRAINT watched_items_user_id_asin_key;
+    END IF;
+  END $$`,
+  `DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'watched_items_user_store_asin_key') THEN
+      ALTER TABLE watched_items ADD CONSTRAINT watched_items_user_store_asin_key UNIQUE (user_id, store, asin);
+    END IF;
+  END $$`,
   `CREATE INDEX IF NOT EXISTS watched_items_user_status_idx
     ON watched_items (user_id, status)`,
   `CREATE INDEX IF NOT EXISTS watched_items_status_next_check_idx
@@ -99,10 +111,12 @@ const SCHEMA_STATEMENTS: string[] = [
     old_price TEXT,
     new_price TEXT,
     target_price TEXT,
+    currency TEXT NOT NULL DEFAULT 'USD',
     delivered_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     channel TEXT NOT NULL DEFAULT 'imessage',
     reply_text TEXT NOT NULL
   )`,
+  `ALTER TABLE watch_alerts ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'USD'`,
   `CREATE INDEX IF NOT EXISTS watch_alerts_user_delivered_idx
     ON watch_alerts (user_id, delivered_at DESC)`,
   `CREATE TABLE IF NOT EXISTS agent_threads (

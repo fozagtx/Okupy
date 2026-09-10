@@ -1,4 +1,4 @@
-import { comparePrices, fetchAmazonPage } from "./amazon.js";
+import { comparePrices, fetchProductPage } from "./amazon.js";
 import { watchStore, type WatchItem } from "./watch-store.js";
 import { photonStatus } from "./photon.js";
 import { spectrumSend } from "./spectrum-state.js";
@@ -16,7 +16,7 @@ type PriceTickResult = {
   failures: number;
 };
 
-function nextCheckAt(item: WatchItem, now: Date): Date {
+export function nextCheckAt(item: WatchItem, now: Date): Date {
   const created = new Date(item.createdAt);
   const createdMs = created.getTime();
   const offsetMs = createdMs % WATCH_CHECK_INTERVAL_MS;
@@ -66,10 +66,10 @@ export async function runPriceTick(): Promise<PriceTickResult> {
 }
 
 async function checkOne(item: WatchItem): Promise<{ dropDetected: boolean }> {
-  const fetched = await fetchAmazonPage(item.url);
+  const fetched = await fetchProductPage(item.url, item.store);
   const checkedAt = new Date();
   if (!fetched.price) {
-    await watchStore.recordPrice(item.id, item.userId, item.lastPrice ?? "0", fetched.currency, checkedAt);
+    await watchStore.recordCheck(item.id, item.userId, checkedAt);
     return { dropDetected: false };
   }
   await watchStore.recordPrice(item.id, item.userId, fetched.price, fetched.currency, checkedAt);
@@ -112,6 +112,7 @@ async function checkOne(item: WatchItem): Promise<{ dropDetected: boolean }> {
     oldPrice: previous,
     newPrice: fetched.price,
     targetPrice: item.targetPrice,
+    currency: fetched.currency,
     channel,
     replyText,
   });
@@ -152,7 +153,8 @@ export function formatMoney(value: string, currency: string): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-  const symbol = currency === "USD" ? "$" : currency === "EUR" ? "€" : currency === "GBP" ? "£" : "";
+  // Only monitored stores get symbols: USD (Amazon) and GHS (Jumia Ghana).
+  const symbol = currency === "USD" ? "$" : currency === "GHS" ? "GH₵ " : "";
   return symbol ? `${symbol}${formatted}` : `${formatted} ${currency}`;
 }
 
@@ -169,5 +171,3 @@ export function stopWatchScheduler(): void {
   clearInterval(timer);
   timer = null;
 }
-
-void nextCheckAt;

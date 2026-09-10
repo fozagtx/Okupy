@@ -26,22 +26,30 @@ test("URLs stay in TypeScript config and out of environment configuration", () =
   const env = read(".env.example");
   const render = read("render.yaml");
   const config = read("src/mastra/config.ts");
-  const amazon = read("src/mastra/amazon.ts");
+  const server = read("src/server.ts");
   assert.doesNotMatch(env, /\bEXA_URL=|SEARCH_URL=|API_URL=|FIRECRAWL_URL=/);
   assert.doesNotMatch(render, /\bEXA_URL|SEARCH_URL|API_URL|FIRECRAWL_URL\b/);
   assert.match(config, /https:\/\/api\.exa\.ai\/search/);
   assert.match(config, /https:\/\/backend\.composio\.dev/);
-  assert.match(amazon, /https:\/\/api\.firecrawl\.dev\/v2\/extract/);
+  assert.match(config, /https:\/\/api\.firecrawl\.dev\/v2\/extract/);
+  assert.match(config, /https:\/\/api\.aimlapi\.com\/v1/);
   assert.doesNotMatch(`${env}\n${render}`, /EVE_API_KEY|OKUPY_API_URL/);
+  assert.doesNotMatch(server, /\?host|query\.get\("host"\)/);
   assert.match(env, /DATABASE_URL=/, "DATABASE_URL must be configured for Neon persistence");
   assert.match(env, /FIRECRAWL_API_KEY=/, "Firecrawl key is required for Amazon scraping");
+  assert.match(env, /PUBLIC_BASE_URL=/, "OAuth callbacks need an allowlisted public base URL");
 });
 
 test("deployment uses a reproducible Node build", () => {
   const render = read("render.yaml");
+  const config = read("src/mastra/config.ts");
   assert.ok(existsSync(join(root, "package-lock.json")));
   assert.match(render, /buildCommand: npm ci && npm run build/);
   assert.match(render, /startCommand: npm start/);
+  assert.match(config, /firecrawlExtractUrl/);
+  assert.match(config, /aimlApiBaseUrl/);
+  assert.doesNotMatch(config, /profileFile|memoryDatabaseUrl|dataDirectory/);
+  assert.doesNotMatch(render, /mountPath: \/var\/data/);
 });
 
 test("iMessage uses the current split Spectrum cloud packages", () => {
