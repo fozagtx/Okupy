@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { WatchStore } from "../src/mastra/watch-store.js";
+import { WatchStore } from "../src/agent/watch-store.js";
 import { needsDatabase, withDb } from "./_db.js";
 
 const SAMPLE = {

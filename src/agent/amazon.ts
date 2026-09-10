@@ -2,6 +2,15 @@ import { z } from "zod";
 import { config, secret } from "./config.js";
 
 export type StoreId = "amazon" | "jumia";
+export type ProductSearchStore = StoreId | "both";
+
+export type ProductSearchResult = {
+  store: StoreId;
+  productId: string;
+  title: string;
+  description: string;
+  url: string;
+};
 
 const AMAZON_ROOT_HOSTS = new Set([
   "amazon.ae",
@@ -219,6 +228,79 @@ export function canonicalAmazonUrl(rawUrl: string): string | null {
 }
 
 const FIRECRAWL_EXTRACT_URL = config.firecrawlExtractUrl;
+const FIRECRAWL_SEARCH_URL = config.firecrawlSearchUrl;
+
+const searchResponseSchema = z.object({
+  success: z.boolean().optional(),
+  data: z
+    .object({
+      web: z
+        .array(
+          z.object({
+            title: z.string().optional(),
+            description: z.string().optional(),
+            url: z.string(),
+          }),
+        )
+        .optional(),
+    })
+    .optional(),
+  error: z.string().optional(),
+});
+
+/** Search supported storefronts and return only canonical product-detail URLs. */
+export async function searchProducts(
+  query: string,
+  store: ProductSearchStore = "both",
+  limit = 5,
+): Promise<ProductSearchResult[]> {
+  const normalizedQuery = z.string().trim().min(2).max(200).parse(query);
+  const normalizedLimit = z.number().int().min(1).max(10).parse(limit);
+  const apiKey = secret("FIRECRAWL_API_KEY");
+  if (!apiKey) throw new Error("FIRECRAWL_API_KEY is required to search for products.");
+
+  const includeDomains =
+    store === "amazon" ? ["amazon.com"] : store === "jumia" ? ["jumia.com.gh"] : ["amazon.com", "jumia.com.gh"];
+  const response = await fetch(FIRECRAWL_SEARCH_URL, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      query: `${normalizedQuery} product`,
+      limit: Math.min(30, Math.max(normalizedLimit * 3, 10)),
+      sources: ["web"],
+      includeDomains,
+      ...(store === "jumia" ? { country: "GH" } : {}),
+      ignoreInvalidURLs: true,
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) throw new Error(`Firecrawl search failed with status ${response.status}.`);
+
+  const payload = searchResponseSchema.parse(await response.json());
+  if (payload.error) throw new Error(`Firecrawl search error: ${payload.error}`);
+
+  const seen = new Set<string>();
+  const results: ProductSearchResult[] = [];
+  for (const candidate of payload.data?.web ?? []) {
+    const resolved = canonicalProductUrl(candidate.url);
+    if (!resolved || (store !== "both" && resolved.store !== store)) continue;
+    const key = `${resolved.store}:${resolved.productId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    results.push({
+      store: resolved.store,
+      productId: resolved.productId,
+      title: candidate.title?.trim() || `${resolved.store === "amazon" ? "Amazon" : "Jumia Ghana"} item`,
+      description: candidate.description?.trim() || "",
+      url: resolved.url,
+    });
+    if (results.length >= normalizedLimit) break;
+  }
+  return results;
+}
 
 const extractResponseSchema = z.object({
   success: z.boolean().optional(),

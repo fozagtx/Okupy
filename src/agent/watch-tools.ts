@@ -4,6 +4,7 @@ import {
   canonicalProductUrl,
   comparePrices,
   isStoreEnabled,
+  searchProducts,
   unsupportedStoreMessage,
 } from "./amazon.js";
 import { watchStore } from "./watch-store.js";
@@ -71,6 +72,26 @@ const addItemParameters = z.object({
     .describe("Optional price in major units (e.g. 199.99). Agent will alert when price drops at or below this."),
   fetchNow: z.boolean().default(true).describe("If true, scrape the current price immediately and store it as the baseline."),
 });
+
+const searchProductsParameters = z.object({
+  query: z.string().trim().min(2).max(200).describe("Product name and distinguishing details to search for"),
+  store: z.enum(["amazon", "jumia", "both"]).default("both"),
+  limit: z.number().int().min(1).max(10).default(5),
+});
+
+export async function executeSearchProducts(input: z.input<typeof searchProductsParameters>) {
+  const parsed = searchProductsParameters.parse(input);
+  const results = await searchProducts(parsed.query, parsed.store, parsed.limit);
+  return {
+    query: parsed.query,
+    store: parsed.store,
+    results,
+    message:
+      results.length > 0
+        ? `Found ${results.length} trackable product ${results.length === 1 ? "listing" : "listings"}.`
+        : "I couldn't find a trackable product page. Try adding the model, size, color, or storage capacity.",
+  };
+}
 
 export async function executeAddWatchItem(input: z.input<typeof addItemParameters>) {
   const blocked = unsupportedStoreMessage(input.url);
@@ -234,6 +255,12 @@ const checkPricesParameters = z.object({
   itemId: z.string().trim().min(1).max(256).optional(),
 });
 
+const boundAddItemParameters = addItemParameters.omit({ userId: true });
+const boundItemUserParameters = itemUserParameters.omit({ userId: true });
+const boundUpdateTargetParameters = updateTargetParameters.omit({ userId: true });
+const boundListCartParameters = listCartParameters.omit({ userId: true });
+const boundCheckPricesParameters = checkPricesParameters.omit({ userId: true });
+
 export async function executeCheckWatchPrices(input: z.input<typeof checkPricesParameters>) {
   const items = input.itemId
     ? [await watchStore.get(input.itemId, input.userId)].filter(
@@ -291,6 +318,12 @@ export async function executeCheckWatchPrices(input: z.input<typeof checkPricesP
 }
 
 export const watchTools = {
+  searchProducts: {
+    description:
+      "Search Amazon, Jumia Ghana, or both for real product listings. Use when the user names a product without sending its URL. Return numbered matches and preserve each full URL so a later selection can be tracked.",
+    inputSchema: searchProductsParameters,
+    execute: executeSearchProducts,
+  },
   addWatchItem: {
     description:
       "Add an Amazon or Jumia product URL to the user's monitored cart. Optionally takes a target threshold; alerts fire when the price drops at or below it.",
@@ -330,5 +363,55 @@ export const watchTools = {
     execute: executeCheckWatchPrices,
   },
 } as const;
+
+/** Bind all cart mutations to the authenticated iMessage/dashboard user. */
+export function createWatchToolsForUser(userId: string) {
+  const boundUserId = z.string().trim().min(1).max(256).parse(userId);
+  return {
+    searchProducts: watchTools.searchProducts,
+    addWatchItem: {
+      ...watchTools.addWatchItem,
+      inputSchema: boundAddItemParameters,
+      execute: (input: z.input<typeof boundAddItemParameters>) =>
+        executeAddWatchItem({ ...input, userId: boundUserId }),
+    },
+    removeWatchItem: {
+      ...watchTools.removeWatchItem,
+      inputSchema: boundItemUserParameters,
+      execute: (input: z.input<typeof boundItemUserParameters>) =>
+        executeRemoveWatchItem({ ...input, userId: boundUserId }),
+    },
+    pauseWatchItem: {
+      ...watchTools.pauseWatchItem,
+      inputSchema: boundItemUserParameters,
+      execute: (input: z.input<typeof boundItemUserParameters>) =>
+        executePauseWatchItem({ ...input, userId: boundUserId }),
+    },
+    resumeWatchItem: {
+      ...watchTools.resumeWatchItem,
+      inputSchema: boundItemUserParameters,
+      execute: (input: z.input<typeof boundItemUserParameters>) =>
+        executeResumeWatchItem({ ...input, userId: boundUserId }),
+    },
+    updateWatchTarget: {
+      ...watchTools.updateWatchTarget,
+      inputSchema: boundUpdateTargetParameters,
+      execute: (input: z.input<typeof boundUpdateTargetParameters>) =>
+        executeUpdateWatchTarget({ ...input, userId: boundUserId }),
+    },
+    listWatchCart: {
+      ...watchTools.listWatchCart,
+      inputSchema: boundListCartParameters,
+      execute: (input: z.input<typeof boundListCartParameters>) =>
+        executeListWatchCart({ ...input, userId: boundUserId }),
+    },
+    checkWatchPrices: {
+      ...watchTools.checkWatchPrices,
+      inputSchema: boundCheckPricesParameters,
+      execute: (input: z.input<typeof boundCheckPricesParameters>) =>
+        executeCheckWatchPrices({ ...input, userId: boundUserId }),
+    },
+  } as const;
+}
 
 void watchItemSchema;

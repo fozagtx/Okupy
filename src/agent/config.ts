@@ -3,6 +3,7 @@ export const config = {
   exaSearchUrl: "https://api.exa.ai/search",
   composioApiUrl: "https://backend.composio.dev",
   firecrawlExtractUrl: "https://api.firecrawl.dev/v2/extract",
+  firecrawlSearchUrl: "https://api.firecrawl.dev/v2/search",
   aimlApiBaseUrl: "https://api.aimlapi.com/v1",
   searchWindowDays: 45,
   maxResults: 8,

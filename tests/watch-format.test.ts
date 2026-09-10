@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatDropAlert } from "../src/mastra/watch-scheduler.js";
+import { formatDropAlert } from "../src/agent/watch-scheduler.js";
 
 test("formatDropAlert includes old/new price, percent change, and target hit banner", () => {
   const message = formatDropAlert({

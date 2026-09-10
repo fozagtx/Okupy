@@ -43,6 +43,6 @@ npm run build
 
 ## Deployment
 
-Create a Neon project, copy the pooled connection string into Render as `DATABASE_URL`, then create a Render Blueprint from `render.yaml` with `AIML_API_KEY`, `EXA_API_KEY`, `FIRECRAWL_API_KEY`, `COMPOSIO_API_KEY`, and Photon/Spectrum credentials. One Node service runs the HTTP server, both agents, both schedulers, and Photon. Schema migrations run on startup. Public integration locations are constants in `src/mastra/config.ts`.
+Create a Neon project, copy the pooled connection string into Render as `DATABASE_URL`, then create a Render Blueprint from `render.yaml` with `AIML_API_KEY`, `EXA_API_KEY`, `FIRECRAWL_API_KEY`, `COMPOSIO_API_KEY`, and Photon/Spectrum credentials. One Node service runs the HTTP server, all agents, schedulers, and Photon. Schema migrations run on startup. Public integration locations are constants in `src/agent/config.ts`.
 
 See [the architecture guide](docs/architecture.md) for trust boundaries and production notes.

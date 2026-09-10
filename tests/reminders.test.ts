@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ReminderStore } from "../src/mastra/reminders.js";
+import { ReminderStore } from "../src/agent/reminders.js";
 import { needsDatabase, withDb } from "./_db.js";
 
 withDb("reminder store creates, lists, and cancels pending reminders", async (sql) => {

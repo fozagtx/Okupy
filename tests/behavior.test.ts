@@ -3,8 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
-import { ProfileStore } from "../src/mastra/profiles.js";
-import { classifyEvent } from "../src/mastra/tools.js";
+import { ProfileStore } from "../src/agent/profiles.js";
+import { classifyEvent } from "../src/agent/tools.js";
 import { needsDatabase, resetSchema, testDb, withDb } from "./_db.js";
 
 test("event results preserve PR #3 classification signals", () => {

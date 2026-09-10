@@ -1,23 +1,13 @@
 import { generateText, tool, stepCountIs } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { config } from "./config.js";
-import { watchTools } from "./watch-tools.js";
+import { createWatchToolsForUser } from "./watch-tools.js";
 import { threadStore } from "./threads.js";
 
 const aiml = createOpenAI({
   baseURL: config.aimlApiBaseUrl,
   apiKey: process.env.AIML_API_KEY,
 });
-
-const aiWatchTools = {
-  addWatchItem: tool(watchTools.addWatchItem),
-  removeWatchItem: tool(watchTools.removeWatchItem),
-  pauseWatchItem: tool(watchTools.pauseWatchItem),
-  resumeWatchItem: tool(watchTools.resumeWatchItem),
-  updateWatchTarget: tool(watchTools.updateWatchTarget),
-  listWatchCart: tool(watchTools.listWatchCart),
-  checkWatchPrices: tool(watchTools.checkWatchPrices),
-};
 
 const WATCH_SYSTEM_PROMPT = `You are an iMessage-first price-drop concierge for a builder's Jumia Ghana + Amazon cart. The user texts you
 about Jumia Ghana (jumia.com.gh) or Amazon items, you monitor them, and you text them the moment a price falls.
@@ -29,6 +19,13 @@ Add an item. When the user pastes an Amazon URL (amazon.com/dp/<ASIN>) or a Jumi
 If the user mentions a target price like "alert me under 200" or "notify me at $149.99", pass that as
 targetPrice (number as a string, no $). Confirm with the baseline price, the store name (Jumia Ghana or Amazon), and the target in one short
 sentence.
+
+Search by name. When the user names a product without a URL, call searchProducts. Unless they explicitly ask you to
+automatically track the best or first match, return up to five numbered matches with store, title, short description,
+and the full URL, then ask them to reply with a number. When they select a numbered result, recover its URL from the
+conversation and call addWatchItem. If they explicitly say to find and track the best/first match, search first and then
+call addWatchItem with the first relevant result in the same turn. Never invent a URL and never track an ambiguous match
+without confirmation.
 
 List the cart. When the user asks "what's on my watch list", "show my cart", "what am I watching", or
 "show prices", call listWatchCart. Render the cart as a compact iMessage-friendly list with each line
@@ -55,6 +52,17 @@ markdown headers — iMessage doesn't render them. Short paragraphs separated by
 
 export async function runWatchAgent(userId: string, prompt: string): Promise<{ reply: string }> {
   const history = await threadStore.list(`watch:${userId}`);
+  const watchTools = createWatchToolsForUser(userId);
+  const aiWatchTools = {
+    searchProducts: tool(watchTools.searchProducts),
+    addWatchItem: tool(watchTools.addWatchItem),
+    removeWatchItem: tool(watchTools.removeWatchItem),
+    pauseWatchItem: tool(watchTools.pauseWatchItem),
+    resumeWatchItem: tool(watchTools.resumeWatchItem),
+    updateWatchTarget: tool(watchTools.updateWatchTarget),
+    listWatchCart: tool(watchTools.listWatchCart),
+    checkWatchPrices: tool(watchTools.checkWatchPrices),
+  };
   const result = await generateText({
     model: aiml("gpt-4o-mini"),
     system: WATCH_SYSTEM_PROMPT,

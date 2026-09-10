@@ -1,18 +1,18 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { config } from "./mastra/config.js";
-import { getDb, isDatabaseConfigured, runMigrations } from "./mastra/db.js";
-import { dashboardHtml } from "./mastra/dashboard.js";
-import { startPhoton, photonStatus } from "./mastra/photon.js";
-import { spectrumState } from "./mastra/spectrum-state.js";
-import { startScheduler } from "./mastra/scheduler.js";
-import { startWatchScheduler } from "./mastra/watch-scheduler.js";
-import { respond } from "./mastra/respond.js";
-import { reminderStore } from "./mastra/reminders.js";
-import { watchStore } from "./mastra/watch-store.js";
-import { startGmailConnection } from "./mastra/composio.js";
-import { runWatchAgent } from "./mastra/watch-agent.js";
-import { executeAddWatchItem, executeCheckWatchPrices } from "./mastra/watch-tools.js";
-import { getProfile, saveProfile, builderProfileInputSchema } from "./mastra/profiles.js";
+import { config } from "./agent/config.js";
+import { getDb, isDatabaseConfigured, runMigrations } from "./agent/db.js";
+import { dashboardHtml } from "./agent/dashboard.js";
+import { startPhoton, photonStatus } from "./agent/photon.js";
+import { spectrumState } from "./agent/spectrum-state.js";
+import { startScheduler } from "./agent/scheduler.js";
+import { startWatchScheduler } from "./agent/watch-scheduler.js";
+import { respond } from "./agent/respond.js";
+import { reminderStore } from "./agent/reminders.js";
+import { watchStore } from "./agent/watch-store.js";
+import { startGmailConnection, scanGmailOffers } from "./agent/composio.js";
+import { runWatchAgent } from "./agent/watch-agent.js";
+import { executeAddWatchItem, executeCheckWatchPrices } from "./agent/watch-tools.js";
+import { getProfile, saveProfile, builderProfileInputSchema } from "./agent/profiles.js";
 import { z } from "zod";
 
 const discoverSchema = z.object({
@@ -136,7 +136,7 @@ const routes = [
       memory: "neon",
       database,
       channel: "photon-imessage",
-      agents: ["event", "watch"],
+      agents: ["event", "watch", "gmail"],
       photon,
       spectrum: spectrumState.ready,
     });
@@ -214,6 +214,68 @@ const routes = [
       return;
     }
     sendHtml(res, 200, "<h1>Connected</h1><p>You can close this tab and return to Okupy.</p>");
+  }),
+  /**
+   * POST /v1/gmail/scan
+   * User-triggered: scan Gmail for Amazon/Jumia promotional emails.
+   * Body: { userId: string, maxMessages?: number }
+   * Returns: { offers: GmailOffer[], total: number } or connection/error info.
+   * The userId is the iMessage sender handle — same identity bound to Composio.
+   */
+  route("POST", "/v1/gmail/scan", async (req, res) => {
+    let body: unknown;
+    try {
+      body = await readJson(req);
+    } catch (error) {
+      sendJson(res, 400, { error: error instanceof Error ? error.message : "Invalid JSON." });
+      return;
+    }
+    const schema = z.object({
+      userId: z.string().trim().min(1).max(256),
+      maxMessages: z.number().int().min(1).max(20).default(10),
+    });
+    const result = schema.safeParse(body);
+    if (!result.success) {
+      sendJson(res, 400, { error: validationError(result) });
+      return;
+    }
+    try {
+      const scan = await scanGmailOffers(result.data.userId, result.data.maxMessages);
+      sendJson(res, scan.status === "ok" ? 200 : scan.status === "error" ? 502 : 200, scan);
+    } catch (error) {
+      console.error("Gmail scan failed", error);
+      sendJson(res, 502, { error: "Gmail scan is temporarily unavailable." });
+    }
+  }),
+  /**
+   * POST /v1/gmail/agent/:userId
+   * Run the Gmail agent (present offers, track selections) via natural language.
+   * Body: { message: string }
+   */
+  route("POST", "/v1/gmail/agent/:userId", async (req, res, params) => {
+    let body: unknown;
+    try {
+      body = await readJson(req);
+    } catch (error) {
+      sendJson(res, 400, { error: error instanceof Error ? error.message : "Invalid JSON." });
+      return;
+    }
+    const schema = z.object({
+      message: z.string().trim().max(2_000).default("Check my Gmail for Amazon and Jumia offers"),
+    });
+    const parsed = schema.safeParse(body);
+    if (!parsed.success) {
+      sendJson(res, 400, { error: validationError(parsed) });
+      return;
+    }
+    try {
+      const { runGmailAgent } = await import("./agent/gmail-agent.js");
+      const agentResult = await runGmailAgent(params.userId, parsed.data.message);
+      sendJson(res, 200, agentResult);
+    } catch (error) {
+      console.error("Gmail agent failed", error);
+      sendJson(res, 502, { error: "Gmail agent is temporarily unavailable." });
+    }
   }),
   route("GET", "/v1/reminders/:userId", async (_req, res, params, query) => {
     const includeFired = query.get("includeFired") === "true";

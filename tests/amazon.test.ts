@@ -14,11 +14,13 @@ import {
   isJumiaGhanaHost,
   isJumiaHost,
   isStoreEnabled,
+  searchProducts,
   storePolicy,
   unsupportedStoreMessage,
-} from "../src/mastra/amazon.js";
-import { looksLikeAmazonRequest } from "../src/mastra/respond.js";
-import { formatMoney, nextCheckAt, WATCH_CHECK_INTERVAL_MS } from "../src/mastra/watch-scheduler.js";
+} from "../src/agent/amazon.js";
+import { looksLikeAmazonRequest } from "../src/agent/respond.js";
+import { formatMoney, nextCheckAt, WATCH_CHECK_INTERVAL_MS } from "../src/agent/watch-scheduler.js";
+import { createWatchToolsForUser } from "../src/agent/watch-tools.js";
 
 test("extractAsinFromUrl pulls ASIN from common Amazon URL shapes", () => {
   assert.equal(extractAsinFromUrl("https://www.amazon.com/dp/B09V3KXJPB"), "B09V3KXJPB");
@@ -86,6 +88,9 @@ test("looksLikeAmazonRequest routes watch intent without stealing event queries"
   );
   assert.equal(looksLikeAmazonRequest("https://www.jumia.com.ng/x-12345678.html"), false);
   assert.equal(looksLikeAmazonRequest("track this jumia.com.gh link for me, price drop alerts"), true);
+  assert.equal(looksLikeAmazonRequest("Find an iPhone 16 on Jumia and track it"), true);
+  assert.equal(looksLikeAmazonRequest("Search Amazon for an MX Master 3S"), true);
+  assert.equal(looksLikeAmazonRequest("Monitor the price of a Tecno Spark 50"), true);
   assert.equal(looksLikeAmazonRequest("drop me events with free food tonight"), false);
   assert.equal(looksLikeAmazonRequest("watch for meetups near me"), false);
   assert.equal(looksLikeAmazonRequest("link up with founders this week"), false);
@@ -144,6 +149,76 @@ test("unsupportedStoreMessage rejects non-ghana jumia and unknown stores", () =>
   assert.equal(typeof storePolicy().jumiaGhanaOnly, "boolean");
   assert.equal(storePolicy().jumiaGhanaOnly, true);
   assert.equal(isStoreEnabled("jumia"), true);
+});
+
+test("searchProducts returns canonical supported product listings", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalApiKey = process.env.FIRECRAWL_API_KEY;
+  let requestBody: Record<string, unknown> | null = null;
+  process.env.FIRECRAWL_API_KEY = "test-firecrawl-key";
+  globalThis.fetch = async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body));
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: {
+          web: [
+            {
+              title: "Logitech MX Master 3S",
+              description: "Wireless performance mouse",
+              url: "https://www.amazon.com/Logitech-MX-Master-3S/dp/B09V3KXJPB?tag=search",
+            },
+            {
+              title: "Logitech MX Master 3S duplicate",
+              url: "https://www.amazon.com/dp/B09V3KXJPB?ref=duplicate",
+            },
+            {
+              title: "TECNO Spark 50",
+              description: "128 GB phone",
+              url: "https://www.jumia.com.gh/phones/tecno-spark-50-300723006.html?utm_source=search",
+            },
+            { title: "Amazon search page", url: "https://www.amazon.com/s?k=mx+master" },
+            { title: "Unsupported Jumia country", url: "https://www.jumia.com.ng/x-12345678.html" },
+          ],
+        },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  };
+
+  try {
+    const results = await searchProducts("Logitech MX Master 3S", "both", 5);
+    assert.deepEqual(
+      results.map(result => ({ store: result.store, productId: result.productId, url: result.url })),
+      [
+        { store: "amazon", productId: "B09V3KXJPB", url: "https://www.amazon.com/dp/B09V3KXJPB" },
+        {
+          store: "jumia",
+          productId: "300723006",
+          url: "https://www.jumia.com.gh/phones/tecno-spark-50-300723006.html",
+        },
+      ],
+    );
+    assert.deepEqual(requestBody?.includeDomains, ["amazon.com", "jumia.com.gh"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalApiKey === undefined) delete process.env.FIRECRAWL_API_KEY;
+    else process.env.FIRECRAWL_API_KEY = originalApiKey;
+  }
+});
+
+test("iMessage watch tools bind the sender identity server-side", () => {
+  const tools = createWatchToolsForUser("imessage-sender-123");
+  assert.equal("userId" in tools.addWatchItem.inputSchema.shape, false);
+  assert.equal("userId" in tools.listWatchCart.inputSchema.shape, false);
+  assert.equal(typeof tools.searchProducts.execute, "function");
+  assert.equal(
+    tools.addWatchItem.inputSchema.safeParse({
+      url: "https://www.amazon.com/dp/B09V3KXJPB",
+      fetchNow: false,
+    }).success,
+    true,
+  );
 });
 
 test("formatMoney renders jumia ghana currency", () => {

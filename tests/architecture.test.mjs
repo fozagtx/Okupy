@@ -18,6 +18,7 @@ test("the application is a TypeScript AI SDK service", () => {
   assert.match(render, /runtime: node/);
   assert.doesNotMatch(render, /python|uvicorn|docker/i);
   assert.equal(existsSync(join(root, "src/okupy")), false, "legacy Python backend must stay removed");
+  assert.equal(existsSync(join(root, "src/mastra")), false, "src/mastra directory must be removed");
   assert.equal(existsSync(join(root, "pyproject.toml")), false);
   assert.equal(existsSync(join(root, "requirements.txt")), false);
 });
@@ -25,13 +26,14 @@ test("the application is a TypeScript AI SDK service", () => {
 test("URLs stay in TypeScript config and out of environment configuration", () => {
   const env = read(".env.example");
   const render = read("render.yaml");
-  const config = read("src/mastra/config.ts");
+  const config = read("src/agent/config.ts");
   const server = read("src/server.ts");
   assert.doesNotMatch(env, /\bEXA_URL=|SEARCH_URL=|API_URL=|FIRECRAWL_URL=/);
   assert.doesNotMatch(render, /\bEXA_URL|SEARCH_URL|API_URL|FIRECRAWL_URL\b/);
   assert.match(config, /https:\/\/api\.exa\.ai\/search/);
   assert.match(config, /https:\/\/backend\.composio\.dev/);
   assert.match(config, /https:\/\/api\.firecrawl\.dev\/v2\/extract/);
+  assert.match(config, /https:\/\/api\.firecrawl\.dev\/v2\/search/);
   assert.match(config, /https:\/\/api\.aimlapi\.com\/v1/);
   assert.doesNotMatch(`${env}\n${render}`, /EVE_API_KEY|OKUPY_API_URL/);
   assert.doesNotMatch(server, /\?host|query\.get\("host"\)/);
@@ -42,7 +44,7 @@ test("URLs stay in TypeScript config and out of environment configuration", () =
 
 test("deployment uses a reproducible Node build", () => {
   const render = read("render.yaml");
-  const config = read("src/mastra/config.ts");
+  const config = read("src/agent/config.ts");
   assert.ok(existsSync(join(root, "package-lock.json")));
   assert.match(render, /buildCommand: npm ci && npm run build/);
   assert.match(render, /startCommand: npm start/);
@@ -54,8 +56,8 @@ test("deployment uses a reproducible Node build", () => {
 
 test("iMessage uses the current split Spectrum cloud packages", () => {
   const pkg = JSON.parse(read("package.json"));
-  const photon = read("src/mastra/photon.ts");
-  const spectrumState = read("src/mastra/spectrum-state.ts");
+  const photon = read("src/agent/photon.ts");
+  const spectrumState = read("src/agent/spectrum-state.ts");
 
   assert.ok(pkg.dependencies["@spectrum-ts/core"]);
   assert.ok(pkg.dependencies["@spectrum-ts/imessage"]);
