@@ -364,7 +364,7 @@ export const watchTools = {
   },
 } as const;
 
-/** Bind all cart mutations to the authenticated iMessage/dashboard user. */
+/** Bind all cart mutations to the authenticated user ID / iMessage sender. */
 export function createWatchToolsForUser(userId: string) {
   const boundUserId = z.string().trim().min(1).max(256).parse(userId);
   return {

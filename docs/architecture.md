@@ -6,18 +6,14 @@ Okupy is a TypeScript Node service built on the Vercel AI SDK over Photon Spectr
 
 ```mermaid
 flowchart LR
-  U[User] --> D[Dashboard]
-  U --> P[Photon Spectrum iMessage]
-  D --> R[HTTP routes in src/server.ts]
+  U[User] --> P[Photon Spectrum iMessage]
   P --> RSP[respond router]
-  R --> RSP
   RSP --> W[Watch agent: gpt-4o-mini + Watch tools]
   RSP --> G[Gmail agent: gpt-4o-mini + Composio scan]
   W --> F[Firecrawl search + extract APIs]
   G --> C[Composio Gmail API]
   W <--> N[(Neon Postgres: watched_items, price_history, watch_alerts, threads)]
   G <--> N
-  R --> C
   W --> WS[Scheduler: prices hourly, 24h per item]
   WS --> P
 ```
@@ -39,7 +35,7 @@ placeholder. Dedupe is per `(user_id, store, asin)`, so the same numeric id on
 Amazon and Jumia tracks independently. Jumia Ghana prices use GHS; Amazon items
 default to USD unless the scrape returns a code.
 
-The dashboard and Photon Spectrum call the same response boundary (`respond()`).
+Inbound iMessage texts from Photon Spectrum call the response boundary (`respond()`).
 Conversation history lives in Neon `agent_threads` (30 messages per user,
 namespaced `watch:` for the watch agent, `gmail:` for the Gmail agent) and is
 partitioned by stable channel identity.
@@ -54,6 +50,6 @@ environment (`AIML_API_KEY`, `FIRECRAWL_API_KEY`,
 `COMPOSIO_API_KEY`, `DATABASE_URL`, `SPECTRUM_*`, optional `PUBLIC_BASE_URL`,
 `WATCH_POLL_INTERVAL_MS`, `WATCH_BATCH_SIZE`). Gmail OAuth callbacks are built
 from allowlisted `PUBLIC_BASE_URL` (https only), never from a client `?host=`.
-Production deployments should additionally authenticate dashboard
-access, normalize channel identities, encrypt persistent data, and provide
-user data deletion/export and retention controls.
+Production deployments should additionally normalize channel
+identities, encrypt persistent data, and provide user data deletion/export
+and retention controls.

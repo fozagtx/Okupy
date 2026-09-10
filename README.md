@@ -30,8 +30,6 @@ export DATABASE_URL_TEST=postgresql://…branch-host…?sslmode=require
 npm test
 ```
 
-Open <http://localhost:4111> for the dashboard.
-
 Useful validation commands:
 
 ```bash

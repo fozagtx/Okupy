@@ -1,7 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { config } from "./agent/config.js";
 import { getDb, isDatabaseConfigured, runMigrations } from "./agent/db.js";
-import { dashboardHtml } from "./agent/dashboard.js";
 import { startPhoton, photonStatus } from "./agent/photon.js";
 import { spectrumState } from "./agent/spectrum-state.js";
 import { startWatchScheduler } from "./agent/watch-scheduler.js";
@@ -109,7 +108,7 @@ function route(method: string, path: string, handler: Handler) {
 }
 
 const routes = [
-  route("GET", "/", async (_req, res) => sendHtml(res, 200, dashboardHtml)),
+  route("GET", "/", async (_req, res) => sendJson(res, 200, { service: "okupy", status: "running" })),
   route("GET", "/health", async (_req, res) => {
     const photon = photonStatus();
     let database: "ready" | "error" | "unconfigured" = "unconfigured";
