@@ -76,7 +76,7 @@ function makeGmailScanTool(userId: string) {
 
 // ---- System prompt -----------------------------------------------------------
 
-const GMAIL_SYSTEM_PROMPT = `You are an iMessage-first deal-scanner for a builder's Amazon and Jumia Ghana inbox.
+const GMAIL_SYSTEM_PROMPT = `You are an iMessage-first deal-scanner for Amazon and Jumia Ghana.
 When the user says "check my Gmail for offers", "check my email for deals", or similar, call scanGmailForOffers.
 
 Presenting offers:

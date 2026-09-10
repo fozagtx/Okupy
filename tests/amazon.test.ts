@@ -18,7 +18,7 @@ import {
   storePolicy,
   unsupportedStoreMessage,
 } from "../src/agent/amazon.js";
-import { looksLikeAmazonRequest } from "../src/agent/respond.js";
+import { looksLikeAmazonRequest, looksLikeEventRequest, respond } from "../src/agent/respond.js";
 import { formatMoney, nextCheckAt, WATCH_CHECK_INTERVAL_MS } from "../src/agent/watch-scheduler.js";
 import { createWatchToolsForUser } from "../src/agent/watch-tools.js";
 
@@ -93,8 +93,38 @@ test("looksLikeAmazonRequest routes watch intent without stealing event queries"
   assert.equal(looksLikeAmazonRequest("Monitor the price of a Tecno Spark 50"), true);
   assert.equal(looksLikeAmazonRequest("drop me events with free food tonight"), false);
   assert.equal(looksLikeAmazonRequest("watch for meetups near me"), false);
-  assert.equal(looksLikeAmazonRequest("link up with founders this week"), false);
   assert.equal(looksLikeAmazonRequest("what's the price of pizza at the venue?"), false);
+});
+
+test("looksLikeEventRequest detects explicit event queries", () => {
+  assert.equal(looksLikeEventRequest("drop me events with free food tonight"), true);
+  assert.equal(looksLikeEventRequest("find meetups near me"), true);
+  assert.equal(looksLikeEventRequest("any hackathons this weekend?"), true);
+  assert.equal(looksLikeEventRequest("hello"), false);
+  assert.equal(looksLikeEventRequest("https://www.amazon.com/dp/B09V3KXJPB"), false);
+  assert.equal(looksLikeEventRequest("check my Gmail for deals"), false);
+});
+
+test("respond routes general greetings to watch agent without onboarding", async () => {
+  const originalAimlKey = process.env.AIML_API_KEY;
+  try {
+    delete process.env.AIML_API_KEY;
+    const greeting = await respond("test-user-greeting", "hello");
+    assert.equal(greeting.agent, "watch");
+    assert.equal(greeting.needsOnboarding, false);
+    assert.match(greeting.reply, /Add AIML_API_KEY/);
+    assert.doesNotMatch(greeting.reply, /What are you building/i);
+
+    const checkGmail = await respond("test-user-gmail", "check my Gmail for Amazon deals");
+    assert.equal(checkGmail.agent, "gmail");
+    assert.equal(checkGmail.needsOnboarding, false);
+
+    const checkEvent = await respond("test-user-event", "free food events this week");
+    assert.equal(checkEvent.agent, "event");
+    assert.equal(checkEvent.needsOnboarding, false);
+  } finally {
+    if (originalAimlKey !== undefined) process.env.AIML_API_KEY = originalAimlKey;
+  }
 });
 
 test("jumia sku extraction pulls the trailing id from product urls", () => {

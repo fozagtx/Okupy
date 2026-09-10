@@ -57,6 +57,16 @@ export function looksLikeWatchRequest(message: string): boolean {
   return false;
 }
 
+const EVENT_EXPLICIT_PATTERN =
+  /\b(events?|meetups?|hackathons?|demo\s*day|free\s*food)\b/i;
+
+export function looksLikeEventRequest(message: string): boolean {
+  const value = (message ?? "").trim();
+  if (!value) return false;
+  if (looksLikeWatchRequest(value) || looksLikeGmailRequest(value)) return false;
+  return EVENT_EXPLICIT_PATTERN.test(value);
+}
+
 export async function respond(userId: string, message: string): Promise<AgentReply> {
   const normalizedUserId = userId.trim();
   if (!normalizedUserId) throw new Error("A user ID is required.");
@@ -76,58 +86,43 @@ export async function respond(userId: string, message: string): Promise<AgentRep
     return { userId: normalizedUserId, reply: result.reply, needsOnboarding: false, agent: "gmail" };
   }
 
-  if (looksLikeAmazonRequest(message)) {
-    if (!secret("AIML_API_KEY")) {
+  // Explicit event scout requests (only if explicitly asked about events/meetups/free food)
+  if (looksLikeEventRequest(message)) {
+    if (!secret("FIRECRAWL_API_KEY")) {
       return {
         userId: normalizedUserId,
-        reply: "Add AIML_API_KEY so I can track prices for you.",
+        reply: "Add FIRECRAWL_API_KEY so I can search live events for you.",
         needsOnboarding: false,
-        agent: "watch",
-      };
-    }
-    const result = await runWatchAgent(normalizedUserId, message);
-    return { userId: normalizedUserId, reply: result.reply, needsOnboarding: false, agent: "watch" };
-  }
-
-  const profile = await profileStore.getProfile(normalizedUserId);
-  if (!profile) {
-    if (await profileStore.hasOnboarding(normalizedUserId)) {
-      const onboarding = await profileStore.advanceOnboarding(normalizedUserId, message);
-      return {
-        userId: normalizedUserId,
-        reply: onboarding.reply,
-        needsOnboarding: !onboarding.complete,
         agent: "event",
       };
     }
-    return {
-      userId: normalizedUserId,
-      reply: await profileStore.beginOnboarding(normalizedUserId),
-      needsOnboarding: true,
-      agent: "event",
-    };
+    if (!secret("AIML_API_KEY")) {
+      return {
+        userId: normalizedUserId,
+        reply: "Add AIML_API_KEY so I can coordinate live event discovery.",
+        needsOnboarding: false,
+        agent: "event",
+      };
+    }
+
+    const profile = await profileStore.getProfile(normalizedUserId);
+    const profileContext = profile ? `Builder profile: ${JSON.stringify(profile)}\n` : "";
+    const result = await runEventAgent(
+      normalizedUserId,
+      `${profileContext}Request: ${message.trim() || "Find me something worthwhile this week"}`,
+    );
+    return { userId: normalizedUserId, reply: result.reply, needsOnboarding: false, agent: "event" };
   }
 
-  if (!secret("FIRECRAWL_API_KEY")) {
-    return {
-      userId: normalizedUserId,
-      reply: "I remember what you're building. Add FIRECRAWL_API_KEY so I can search live events for you.",
-      needsOnboarding: false,
-      agent: "event",
-    };
-  }
+  // DEFAULT AGENT: Watch / price tracking concierge (Amazon, Jumia Ghana, greetings, search, cart)
   if (!secret("AIML_API_KEY")) {
     return {
       userId: normalizedUserId,
-      reply: "I remember what you're building. Add AIML_API_KEY so I can coordinate live event discovery.",
+      reply: "Add AIML_API_KEY so I can track prices for you.",
       needsOnboarding: false,
-      agent: "event",
+      agent: "watch",
     };
   }
-
-  const result = await runEventAgent(
-    normalizedUserId,
-    `Builder profile: ${JSON.stringify(profile)}\nCurrent request: ${message.trim() || "Find me something worthwhile this week"}`,
-  );
-  return { userId: normalizedUserId, reply: result.reply, needsOnboarding: false, agent: "event" };
+  const result = await runWatchAgent(normalizedUserId, message);
+  return { userId: normalizedUserId, reply: result.reply, needsOnboarding: false, agent: "watch" };
 }
