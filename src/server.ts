@@ -42,7 +42,7 @@ const MAX_JSON_BODY_BYTES = 1_000_000;
 if (isDatabaseConfigured()) {
   await runMigrations();
 } else {
-  console.error("DATABASE_URL is not set — watch cart, price history, and alerts will not persist across restarts.");
+  console.error("DATABASE_URL is not set: watch cart, price history, and alerts will not persist across restarts.");
 }
 
 async function readJson(request: IncomingMessage): Promise<unknown> {
@@ -164,7 +164,7 @@ const routes = [
    * User-triggered: scan Gmail for Amazon/Jumia promotional emails.
    * Body: { userId: string, maxMessages?: number }
    * Returns: { offers: GmailOffer[], total: number } or connection/error info.
-   * The userId is the iMessage sender handle — same identity bound to Composio.
+   * The userId is the iMessage sender handle, same identity bound to Composio.
    */
   route("POST", "/v1/gmail/scan", async (req, res) => {
     let body: unknown;

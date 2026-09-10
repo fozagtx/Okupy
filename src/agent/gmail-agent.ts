@@ -13,7 +13,7 @@
  *
  * Identity binding:
  *   The userId is always the iMessage sender phone/handle, so Composio
- *   sessions are always scoped to the right person — no cross-user leakage.
+ *   sessions are always scoped to the right person; no cross-user leakage.
  */
 
 import { generateText, tool, stepCountIs } from "ai";
@@ -83,7 +83,7 @@ Presenting offers:
 - List offers numbered 1 to N (cap at 10 visible at once).
 - Each line: number, store name, subject line snippet, and the first product link.
 - If an offer has more than one product link, say "(+N more links)".
-- Keep each line short — iMessage doesn't wrap nicely.
+- Keep each line short; iMessage does not wrap nicely.
 - End with: "Reply with the numbers you want tracked, e.g. '1 3 5', or 'none' to skip."
 
 Tracking selected offers:
@@ -98,7 +98,7 @@ Not connected:
   the user to open it to connect Gmail, then say "check my Gmail for offers" again.
 - If reason is "not_configured", tell the user that COMPOSIO_API_KEY is not configured on the server.
 
-Voice: concise, plain, conversational. No markdown headers or tables — iMessage doesn't render them.`;
+Voice: concise, plain, conversational. No markdown headers or tables (iMessage does not render them).`;
 
 // ---- Agent runner -----------------------------------------------------------
 

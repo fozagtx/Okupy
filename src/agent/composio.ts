@@ -101,8 +101,8 @@ function detectOfferStore(from: string, subject: string): "amazon" | "jumia" | "
  * messages from Amazon / Jumia, extracts product links, and returns structured
  * offer data ready for the Gmail agent to present.
  *
- * userId MUST be the iMessage sender handle — the same identity bound to the
- * Composio session — so Gmail access is always scoped to the right person.
+ * userId MUST be the iMessage sender handle, the same identity bound to the
+ * Composio session, so Gmail access is always scoped to the right person.
  */
 export async function scanGmailOffers(
   userId: string,
@@ -120,7 +120,7 @@ export async function scanGmailOffers(
     const composio = new Composio({ apiKey, baseURL: config.composioApiUrl });
     const session = await composio.sessions.create(userId, { toolkits: ["gmail"] });
 
-    // Step 1 — list promotional threads from Amazon / Jumia (last 14 days)
+    // Step 1: list promotional threads from Amazon / Jumia (last 14 days)
     let listResult: Record<string, unknown>;
     try {
       const raw = await session.execute("GMAIL_LIST_THREADS", {
@@ -148,17 +148,17 @@ export async function scanGmailOffers(
           status: "not_connected",
           redirectUrl,
           note: redirectUrl
-            ? "Connect your Gmail first — open the link, then say 'check my Gmail for offers' again."
+            ? "Connect your Gmail first: open the link, then say 'check my Gmail for offers' again."
             : "Your Gmail isn't connected. Use POST /v1/connections to get an OAuth link, then try again.",
         };
       }
       throw error;
     }
 
-    // Step 2 — extract thread list from the Composio response envelope
+    // Step 2: extract thread list from the Composio response envelope
     const threads = extractThreadList(listResult);
 
-    // Step 3 — fetch each thread detail and parse offers
+    // Step 3: fetch each thread detail and parse offers
     const offers: GmailOffer[] = [];
     for (const thread of threads.slice(0, maxMessages)) {
       try {
@@ -182,7 +182,7 @@ export async function scanGmailOffers(
 // ---- private helpers --------------------------------------------------------
 
 function extractThreadList(raw: Record<string, unknown>): Array<{ id: string }> {
-  // Composio wraps results — try common envelope shapes
+  // Composio wraps results: try common envelope shapes
   const candidates =
     (raw["threads"] ?? raw["messages"] ?? raw["data"] ?? raw["result"] ?? []);
   if (!Array.isArray(candidates)) return [];

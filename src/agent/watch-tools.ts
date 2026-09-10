@@ -9,21 +9,6 @@ import {
 } from "./amazon.js";
 import { watchStore } from "./watch-store.js";
 
-const watchItemSchema = z.object({
-  id: z.string(),
-  store: z.enum(["amazon", "jumia"]),
-  asin: z.string(),
-  url: z.url(),
-  title: z.string(),
-  imageUrl: z.string().nullable(),
-  targetPrice: z.string().nullable(),
-  initialPrice: z.string().nullable(),
-  lastPrice: z.string().nullable(),
-  lastCurrency: z.string(),
-  lastCheckedAt: z.string().nullable(),
-  status: z.enum(["active", "paused", "removed"]),
-});
-
 function serializeItem(item: {
   id: string;
   store: "amazon" | "jumia";
@@ -106,7 +91,7 @@ export async function executeAddWatchItem(input: z.input<typeof addItemParameter
   if (!isStoreEnabled(store)) {
     throw new Error(
       store === "amazon"
-        ? "Amazon tracking is paused — I only track Jumia Ghana right now."
+        ? "Amazon tracking is paused. I only track Jumia Ghana right now."
         : "Jumia Ghana tracking is paused right now.",
     );
   }
@@ -413,5 +398,3 @@ export function createWatchToolsForUser(userId: string) {
     },
   } as const;
 }
-
-void watchItemSchema;

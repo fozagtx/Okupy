@@ -133,7 +133,7 @@ export type DropAlert = {
 
 export function formatDropAlert(alert: DropAlert): string {
   const lines: string[] = [];
-  lines.push(alert.targetHit ? "★ TARGET HIT — " : "Price drop — ");
+  lines.push(alert.targetHit ? "TARGET HIT: " : "Price drop: ");
   lines.push(`${alert.title}`);
   const previous = formatMoney(alert.oldPrice, alert.currency);
   const next = formatMoney(alert.newPrice, alert.currency);

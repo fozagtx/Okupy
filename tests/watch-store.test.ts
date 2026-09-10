@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
-import test from "node:test";
 import { WatchStore } from "../src/agent/watch-store.js";
-import { needsDatabase, withDb } from "./_db.js";
+import { withDb } from "./_db.js";
 
 const SAMPLE = {
   userId: "watcher-1",
@@ -119,6 +118,3 @@ withDb("watch store records alerts and lists them per user", async sql => {
   assert.equal(alerts[0].newPrice, "149.99");
   assert.equal(alerts[0].currency, "USD");
 });
-
-void needsDatabase;
-void test;

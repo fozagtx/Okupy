@@ -59,7 +59,7 @@ export async function respond(userId: string, message: string): Promise<AgentRep
   const normalizedUserId = userId.trim();
   if (!normalizedUserId) throw new Error("A user ID is required.");
 
-  // Gmail offer-scan — checked first so "check my Gmail for Amazon offers" isn't
+  // Gmail offer scan: checked first so "check my Gmail for Amazon offers" isn't
   // hijacked by general product tracking.
   if (looksLikeGmailRequest(message)) {
     if (!secret("AIML_API_KEY")) {

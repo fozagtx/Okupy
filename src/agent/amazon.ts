@@ -49,7 +49,7 @@ export function detectStore(hostname: string): StoreId | null {
   return null;
 }
 
-/** True only for Jumia Ghana (jumia.com.gh) — other Jumia countries are out of scope. */
+/** True only for Jumia Ghana (jumia.com.gh); other Jumia countries are out of scope. */
 export function isJumiaGhanaHost(hostname: string): boolean {
   return JUMIA_GH_HOST_PATTERN.test(hostname.toLowerCase());
 }
@@ -116,7 +116,7 @@ export function unsupportedStoreMessage(rawUrl: string): string | null {
     return "I only track Jumia Ghana (jumia.com.gh) right now. Send the jumia.com.gh version of that link.";
   }
   if (isAmazonHost(host) && !isStoreEnabled("amazon")) {
-    return "Amazon tracking is paused — I only track Jumia Ghana right now.";
+    return "Amazon tracking is paused. I only track Jumia Ghana right now.";
   }
   if (JUMIA_GH_HOST_PATTERN.test(host) && !isStoreEnabled("jumia")) {
     return "Jumia Ghana tracking is paused right now.";
@@ -416,7 +416,7 @@ function cleanPrice(value: string | null | undefined): string | null {
 function detectCurrencyFromUrl(url: string, store?: StoreId): string | null {
   try {
     const host = new URL(url).hostname.toLowerCase();
-    // Only Jumia Ghana is monitored — always GHS.
+    // Only Jumia Ghana is monitored: always GHS.
     if (host.includes("jumia.com.gh")) return "GHS";
     if (host.includes("jumia")) return store === "jumia" ? "GHS" : null;
     if (host.endsWith(".ca")) return "CAD";

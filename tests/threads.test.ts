@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
-import test from "node:test";
 import { ThreadStore } from "../src/agent/threads.js";
-import { needsDatabase, withDb } from "./_db.js";
+import { withDb } from "./_db.js";
 
 withDb("thread store persists and retrieves message history", async sql => {
   const store = new ThreadStore(sql);
@@ -26,6 +25,3 @@ withDb("thread store clears history cleanly", async sql => {
   await store.clear("user-2");
   assert.equal((await store.list("user-2")).length, 0);
 });
-
-void needsDatabase;
-void test;
