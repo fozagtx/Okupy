@@ -48,7 +48,14 @@ Voice:
 Concise, plain, conversational. Numbers, dollar signs, and GHS currency are fine. No markdown headers or tables (iMessage does not render them). Short paragraphs separated by blank lines.`;
 
 export async function runWatchAgent(userId: string, prompt: string): Promise<{ reply: string }> {
-  const history = await threadStore.list(`watch:${userId}`);
+  let history: Array<{ role: "user" | "assistant"; content: string }> = [];
+  try {
+    const loaded = await threadStore.list(`watch:${userId}`);
+    history = loaded.map(entry => ({ role: entry.role, content: entry.content }));
+  } catch (err) {
+    console.warn("[watch] threadStore.list failed, proceeding without history:", err);
+  }
+
   const watchTools = createWatchToolsForUser(userId);
   const aiWatchTools = {
     searchProducts: tool(watchTools.searchProducts),
@@ -60,18 +67,39 @@ export async function runWatchAgent(userId: string, prompt: string): Promise<{ r
     listWatchCart: tool(watchTools.listWatchCart),
     checkWatchPrices: tool(watchTools.checkWatchPrices),
   };
+
   const result = await generateText({
     model: aiml("gpt-4o-mini"),
     system: WATCH_SYSTEM_PROMPT,
     tools: aiWatchTools,
     stopWhen: stepCountIs(6),
     messages: [
-      ...history.map(entry => ({ role: entry.role, content: entry.content })),
+      ...history,
       { role: "user" as const, content: prompt },
     ],
   });
-  const now = new Date().toISOString();
-  await threadStore.append(`watch:${userId}`, { role: "user", content: prompt, at: now });
-  await threadStore.append(`watch:${userId}`, { role: "assistant", content: result.text, at: now });
-  return { reply: result.text };
+
+  let replyText = result.text?.trim();
+  if (!replyText) {
+    const toolResults = result.steps?.flatMap(s => s.toolResults ?? []) ?? [];
+    if (toolResults.length > 0) {
+      const last = toolResults[toolResults.length - 1] as unknown as { result?: { message?: string } };
+      if (last?.result && typeof last.result === "object" && typeof last.result.message === "string") {
+        replyText = last.result.message;
+      }
+    }
+  }
+  if (!replyText) {
+    replyText = "Done. Let me know what you would like to track next.";
+  }
+
+  try {
+    const now = new Date().toISOString();
+    await threadStore.append(`watch:${userId}`, { role: "user", content: prompt, at: now });
+    await threadStore.append(`watch:${userId}`, { role: "assistant", content: replyText, at: now });
+  } catch (err) {
+    console.warn("[watch] threadStore.append failed:", err);
+  }
+
+  return { reply: replyText };
 }

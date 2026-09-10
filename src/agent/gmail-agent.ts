@@ -107,9 +107,15 @@ export async function runGmailAgent(
   prompt: string,
 ): Promise<{ reply: string }> {
   const threadKey = `gmail:${userId}`;
-  const history = await threadStore.list(threadKey);
-  const watchTools = createWatchToolsForUser(userId);
+  let history: Array<{ role: "user" | "assistant"; content: string }> = [];
+  try {
+    const loaded = await threadStore.list(threadKey);
+    history = loaded.map(entry => ({ role: entry.role, content: entry.content }));
+  } catch (err) {
+    console.warn("[gmail] threadStore.list failed, proceeding without history:", err);
+  }
 
+  const watchTools = createWatchToolsForUser(userId);
   const aiTools = {
     scanGmailForOffers: tool(makeGmailScanTool(userId)),
     addWatchItem: tool(watchTools.addWatchItem),
@@ -122,15 +128,25 @@ export async function runGmailAgent(
     tools: aiTools,
     stopWhen: stepCountIs(8),
     messages: [
-      ...history.map(entry => ({ role: entry.role, content: entry.content })),
+      ...history,
       { role: "user" as const, content: prompt },
     ],
   });
 
-  const now = new Date().toISOString();
-  await threadStore.append(threadKey, { role: "user", content: prompt, at: now });
-  await threadStore.append(threadKey, { role: "assistant", content: result.text, at: now });
-  return { reply: result.text };
+  let replyText = result.text?.trim();
+  if (!replyText) {
+    replyText = "Checked your email for offers. What would you like to track?";
+  }
+
+  try {
+    const now = new Date().toISOString();
+    await threadStore.append(threadKey, { role: "user", content: prompt, at: now });
+    await threadStore.append(threadKey, { role: "assistant", content: replyText, at: now });
+  } catch (err) {
+    console.warn("[gmail] threadStore.append failed:", err);
+  }
+
+  return { reply: replyText };
 }
 
 // ---- Intent detection (used by respond.ts) ----------------------------------
