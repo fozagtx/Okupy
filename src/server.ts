@@ -132,7 +132,7 @@ const routes = [
     sendJson(res, photon === "error" || database === "error" ? 503 : 200, {
       ok: photon !== "error" && database !== "error",
       framework: "ai-sdk",
-      search: "exa",
+      search: "firecrawl",
       memory: "neon",
       database,
       channel: "photon-imessage",

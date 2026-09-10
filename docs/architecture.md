@@ -14,11 +14,11 @@ flowchart LR
   D --> R[HTTP routes in src/server.ts]
   P --> RSP[respond router]
   R --> RSP
-  RSP --> E[Event agent: gpt-4o-mini + Exa tools]
+  RSP --> E[Event agent: gpt-4o-mini + Event tools]
   RSP --> W[Watch agent: gpt-4o-mini + Watch tools]
   RSP --> G[Gmail agent: gpt-4o-mini + Composio scan]
-  E --> X[Exa search API]
-  W --> F[Firecrawl search + extract APIs]
+  E --> F1[Firecrawl search API]
+  W --> F2[Firecrawl search + extract APIs]
   G --> C[Composio Gmail API]
   E <--> N[(Neon Postgres: profiles, drafts, reminders, threads)]
   W <--> N2[(Neon Postgres: watched_items, price_history, watch_alerts)]
@@ -31,7 +31,7 @@ flowchart LR
 ```
 
 `runEventAgent`, `runWatchAgent`, and `runGmailAgent` use `generateText` with typed tools and
-`stepCountIs(6)`. Event discovery performs time-bounded Exa searches and only
+`stepCountIs(6)`. Event discovery performs time-bounded Firecrawl searches and only
 keeps results with explicit food, networking, or builder-credit signals.
 Results retain source URLs, and replies remind users to verify event and RSVP
 details.
@@ -64,7 +64,7 @@ integration, Mastra runtime, LibSQL file, or internal API URL.
 
 All public integration locations are source-controlled in
 `src/agent/config.ts`. Only provider credentials and secrets are read from the
-environment (`AIML_API_KEY`, `EXA_API_KEY`, `FIRECRAWL_API_KEY`,
+environment (`AIML_API_KEY`, `FIRECRAWL_API_KEY`,
 `COMPOSIO_API_KEY`, `DATABASE_URL`, `SPECTRUM_*`, optional `PUBLIC_BASE_URL`,
 `WATCH_POLL_INTERVAL_MS`, `WATCH_BATCH_SIZE`). Gmail OAuth callbacks are built
 from allowlisted `PUBLIC_BASE_URL` (https only), never from a client `?host=`.

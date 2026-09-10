@@ -108,10 +108,10 @@ export async function respond(userId: string, message: string): Promise<AgentRep
     };
   }
 
-  if (!secret("EXA_API_KEY")) {
+  if (!secret("FIRECRAWL_API_KEY")) {
     return {
       userId: normalizedUserId,
-      reply: "I remember what you're building. Add EXA_API_KEY so I can search live events for you.",
+      reply: "I remember what you're building. Add FIRECRAWL_API_KEY so I can search live events for you.",
       needsOnboarding: false,
       agent: "event",
     };

@@ -30,11 +30,11 @@ test("URLs stay in TypeScript config and out of environment configuration", () =
   const server = read("src/server.ts");
   assert.doesNotMatch(env, /\bEXA_URL=|SEARCH_URL=|API_URL=|FIRECRAWL_URL=/);
   assert.doesNotMatch(render, /\bEXA_URL|SEARCH_URL|API_URL|FIRECRAWL_URL\b/);
-  assert.match(config, /https:\/\/api\.exa\.ai\/search/);
   assert.match(config, /https:\/\/backend\.composio\.dev/);
   assert.match(config, /https:\/\/api\.firecrawl\.dev\/v2\/extract/);
   assert.match(config, /https:\/\/api\.firecrawl\.dev\/v2\/search/);
   assert.match(config, /https:\/\/api\.aimlapi\.com\/v1/);
+  assert.doesNotMatch(`${env}\n${render}\n${config}`, /EXA_API_KEY|exaSearchUrl|api\.exa\.ai/);
   assert.doesNotMatch(`${env}\n${render}`, /EVE_API_KEY|OKUPY_API_URL/);
   assert.doesNotMatch(server, /\?host|query\.get\("host"\)/);
   assert.match(env, /DATABASE_URL=/, "DATABASE_URL must be configured for Neon persistence");

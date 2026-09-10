@@ -9,8 +9,6 @@ services:
     envVars:
       - key: AIML_API_KEY
         sync: false
-      - key: EXA_API_KEY
-        sync: false
       - key: FIRECRAWL_API_KEY
         sync: false
       - key: COMPOSIO_API_KEY

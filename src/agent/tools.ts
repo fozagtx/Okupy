@@ -14,20 +14,24 @@ const eventSchema = z.object({
   why: z.string(),
 });
 
-const exaResultSchema = z.object({
+const searchResultSchema = z.object({
   title: z.string().optional(),
   url: z.url(),
   text: z.string().optional(),
+  description: z.string().optional(),
+  markdown: z.string().optional(),
   highlights: z.array(z.string()).optional(),
 });
 
 export type BuilderEvent = z.output<typeof eventSchema>;
 
 export function classifyEvent(item: unknown, location: string, project: string): BuilderEvent | null {
-  const parsed = exaResultSchema.safeParse(item);
+  const parsed = searchResultSchema.safeParse(item);
   if (!parsed.success) return null;
   const value = parsed.data;
-  const evidence = [value.title, value.text, ...(value.highlights ?? [])].filter(Boolean).join(" ");
+  const evidence = [value.title, value.description, value.text, value.markdown, ...(value.highlights ?? [])]
+    .filter(Boolean)
+    .join(" ");
   const normalized = evidence.toLowerCase();
   const freeFood = ["free food", "pizza", "lunch", "dinner", "refreshments", "catering"].some(signal => normalized.includes(signal));
   const networking = ["network", "founder", "demo day", "meetup", "pitch", "cofounder"].some(signal => normalized.includes(signal));
@@ -38,7 +42,7 @@ export function classifyEvent(item: unknown, location: string, project: string):
   return {
     title: value.title?.trim() || "Untitled event",
     url: value.url,
-    summary: (value.text ?? "").slice(0, 500),
+    summary: (value.description ?? value.text ?? value.markdown ?? "").slice(0, 500),
     date: null,
     location,
     freeFood,
@@ -57,35 +61,55 @@ const findBuilderEventsParameters = z.object({
 });
 
 export async function executeFindBuilderEvents(input: z.input<typeof findBuilderEventsParameters>): Promise<{ results: BuilderEvent[] }> {
-  const apiKey = secret("EXA_API_KEY");
-  if (!apiKey) throw new Error("EXA_API_KEY is required for event discovery.");
+  const apiKey = secret("FIRECRAWL_API_KEY");
+  if (!apiKey) throw new Error("FIRECRAWL_API_KEY is required for event discovery.");
 
   const parsed = findBuilderEventsParameters.parse(input);
   const now = new Date();
   const until = new Date(now.getTime() + config.searchWindowDays * 86_400_000);
   const query = [
-    `Upcoming free in-person founder, startup, developer, demo day, hackathon, or community events within ${parsed.radiusMiles} miles of "${parsed.location}"`,
-    `between ${now.toISOString().slice(0, 10)} and ${until.toISOString().slice(0, 10)}.`,
-    "Prioritize explicit free food, pizza, meals, refreshments, networking, cloud credits, grants, or startup perks.",
-    `Relevant to: ${parsed.project}; ${parsed.interests.join(", ")}. Request: ${parsed.request}`,
-  ].join(" ");
-  const response = await fetch(config.exaSearchUrl, {
+    `Upcoming in-person founder, startup, developer, demo day, hackathon, tech events in ${parsed.location}`,
+    `between ${now.toISOString().slice(0, 10)} and ${until.toISOString().slice(0, 10)}`,
+    "free food pizza networking cloud credits grants",
+    parsed.project,
+    parsed.interests.join(" "),
+    parsed.request,
+  ].filter(Boolean).join(" ");
+
+  const response = await fetch(config.firecrawlSearchUrl, {
     method: "POST",
-    headers: { "content-type": "application/json", "x-api-key": apiKey },
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${apiKey}`,
+    },
     body: JSON.stringify({
       query,
-      type: "auto",
-      numResults: config.maxResults,
-      startPublishedDate: `${now.toISOString().slice(0, 10)}T00:00:00.000Z`,
-      contents: { text: { maxCharacters: 1_800 } },
+      limit: Math.min(20, Math.max(config.maxResults, 5)),
+      sources: ["web"],
+      ignoreInvalidURLs: true,
     }),
     signal: AbortSignal.timeout(30_000),
   });
-  if (!response.ok) throw new Error(`Exa search failed (${response.status}).`);
+  if (!response.ok) throw new Error(`Firecrawl search failed (${response.status}).`);
 
-  const body = z.object({ results: z.array(z.unknown()).optional() }).parse(await response.json());
+  const body = z
+    .object({
+      success: z.boolean().optional(),
+      data: z
+        .object({
+          web: z.array(z.unknown()).optional(),
+        })
+        .optional(),
+      results: z.array(z.unknown()).optional(),
+      error: z.string().optional(),
+    })
+    .parse(await response.json());
+
+  if (body.error) throw new Error(`Firecrawl search error: ${body.error}`);
+
+  const candidates = body.data?.web ?? body.results ?? [];
   return {
-    results: (body.results ?? [])
+    results: candidates
       .map(item => classifyEvent(item, parsed.location, parsed.project))
       .filter((event): event is BuilderEvent => event !== null),
   };
